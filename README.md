@@ -1,4 +1,4 @@
-# WebSocket implementation in C
+# C WebSockets
 
 Custom WebSocket implementation in C for educational and recreational purposes.
 
