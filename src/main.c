@@ -7,6 +7,9 @@
 #include <string.h>
 #include <errno.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -20,9 +23,10 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
               "Please compile this on 64 bit machine");
 
 // https://www.websocket.org/echo.html
-#define HOST "irc-ws.chat.twitch.tv"
-// #define HOST "echo.websocket.org"
-#define SERVICE "80"
+// #define HOST "irc-ws.chat.twitch.tv"
+#define HOST "echo.websocket.org"
+// #define SERVICE "80"
+#define SERVICE "443"
 
 typedef enum {
     WS_OPCODE_CONT  = 0x0,
@@ -78,15 +82,14 @@ void log_frame(FILE *stream, Ws_Frame *frame)
 }
 
 // TODO: test all executing paths in send_frame
-int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
+int send_frame(SSL *ssl, Ws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
     {
         // NOTE: FIN is always set
         uint8_t data = (1 << 7) | opcode;
-        if (write(sd, &data, 1) < 0) {
-            fprintf(stderr, "ERROR: could not send frame: %s\n",
-                    strerror(errno));
+        if (SSL_write(ssl, &data, 1) < 0) {
+            ERR_print_errors_fp(stderr);
             return -1;
         }
     }
@@ -97,38 +100,33 @@ int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payloa
         if (payload_len < 126) {
             uint8_t data = (1 << 7) | payload_len;
 
-            if (write(sd, &data, sizeof(data)) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, &data, sizeof(data)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
         } else if (payload_len <= UINT16_MAX) {
             uint8_t data = (1 << 7) | 126;
             uint16_t len = payload_len;
 
-            if (write(sd, &data, sizeof(data)) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, &data, sizeof(data)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
 
-            if (write(sd, &len, sizeof(len)) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, &len, sizeof(len)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
         } else if (payload_len > UINT16_MAX) {
             uint8_t data = (1 << 7) | 127;
 
-            if (write(sd, &data, sizeof(data)) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, &data, sizeof(data)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
 
-            if (write(sd, &payload_len, sizeof(payload_len)) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, &payload_len, sizeof(payload_len)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
         }
@@ -142,9 +140,8 @@ int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payloa
             mask[i] = rand() % 256;
         }
 
-        if (write(sd, mask, sizeof(mask)) < 0) {
-            fprintf(stderr, "ERROR: could not send frame: %s\n",
-                    strerror(errno));
+        if (SSL_write(ssl, mask, sizeof(mask)) <= 0) {
+            ERR_print_errors_fp(stderr);
             return -1;
         }
 
@@ -161,9 +158,8 @@ int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payloa
                 chunk_size += 1;
                 i += 1;
             }
-            if (write(sd, chunk, chunk_size) < 0) {
-                fprintf(stderr, "ERROR: could not send frame: %s\n",
-                        strerror(errno));
+            if (SSL_write(ssl, chunk, chunk_size) <= 0) {
+                ERR_print_errors_fp(stderr);
                 return -1;
             }
         }
@@ -173,7 +169,7 @@ int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payloa
 }
 
 // TODO: test all executing paths in read_frame
-Ws_Frame *read_frame(int sd)
+Ws_Frame *read_frame(SSL *ssl)
 {
 #define FIN(header)         ((header)[0] >> 7)
 #define OPCODE(header)      ((header)[0] & 0xF)
@@ -185,9 +181,8 @@ Ws_Frame *read_frame(int sd)
     uint8_t header[2] = {0};
 
     // Read the header
-    if (read(sd, header, sizeof(header)) < 0) {
-        fprintf(stderr, "ERROR: could not read frame: %s\n",
-                strerror(errno));
+    if (SSL_read(ssl, header, sizeof(header)) <= 0) {
+        ERR_print_errors_fp(stderr);
         goto error;
     }
 
@@ -199,9 +194,8 @@ Ws_Frame *read_frame(int sd)
         switch (len) {
         case 126: {
             uint16_t ext_len = 0;
-            if (read(sd, &ext_len, sizeof(ext_len)) < 0) {
-                fprintf(stderr, "ERROR: could not read frame: %s\n",
-                        strerror(errno));
+            if (SSL_read(ssl, &ext_len, sizeof(ext_len)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 goto error;
             }
             payload_len = ext_len;
@@ -209,9 +203,8 @@ Ws_Frame *read_frame(int sd)
         break;
         case 127: {
             uint64_t ext_len = 0;
-            if (read(sd, &ext_len, sizeof(ext_len)) < 0) {
-                fprintf(stderr, "ERROR: could not read frame: %s\n",
-                        strerror(errno));
+            if (SSL_read(ssl, &ext_len, sizeof(ext_len)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 goto error;
             }
             payload_len = ext_len;
@@ -229,9 +222,8 @@ Ws_Frame *read_frame(int sd)
         bool masked = MASK(header);
 
         if (masked) {
-            if (read(sd, &mask, sizeof(mask)) < 0) {
-                fprintf(stderr, "ERROR: could not read frame: %s\n",
-                        strerror(errno));
+            if (SSL_read(ssl, &mask, sizeof(mask)) <= 0) {
+                ERR_print_errors_fp(stderr);
                 goto error;
             }
         }
@@ -249,9 +241,8 @@ Ws_Frame *read_frame(int sd)
         frame->opcode = OPCODE(header);
         frame->payload_len = payload_len;
 
-        if (read(sd, frame->payload, frame->payload_len) < 0) {
-            fprintf(stderr, "ERROR: could not read frame: %s\n",
-                    strerror(errno));
+        if (SSL_read(ssl, frame->payload, frame->payload_len) <= 0) {
+            ERR_print_errors_fp(stderr);
             goto error;
         }
     }
@@ -266,13 +257,16 @@ error:
 
 int main()
 {
+    // Resources to destroy at the end of the function
+    int sd = -1;
+    struct addrinfo *addrs = NULL;
+    SSL_CTX *ctx = NULL;
+    SSL *ssl = NULL;
+
     struct addrinfo hints = {0};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_protocol = IPPROTO_TCP;
-
-    int sd = -1;
-    struct addrinfo *addrs = NULL;
 
     if (getaddrinfo(HOST, SERVICE, &hints, &addrs) < 0) {
         fprintf(stderr, "ERROR: Could not resolved address of `"HOST"`\n");
@@ -303,7 +297,36 @@ int main()
         goto error;
     }
 
-    // TODO: no support for wss
+    // Initialize SSL
+    {
+        OpenSSL_add_all_algorithms();
+        SSL_load_error_strings();
+        ctx = SSL_CTX_new(TLS_client_method());
+        if (ctx == NULL) {
+            fprintf(stderr, "ERROR: could not initialize SSL context\n");
+            ERR_print_errors_fp(stderr);
+            goto error;
+        }
+
+        ssl = SSL_new(ctx);
+        if (ssl == NULL) {
+            fprintf(stderr, "ERROR: could not create SSL connection\n");
+            ERR_print_errors_fp(stderr);
+            goto error;
+        }
+
+        if (!SSL_set_fd(ssl, sd)) {
+            fprintf(stderr, "ERROR: could not setup SSL connection\n");
+            ERR_print_errors_fp(stderr);
+            goto error;
+        }
+
+        if (SSL_connect(ssl) <= 0) {
+            fprintf(stderr, "ERROR: could not establish SSL connection\n");
+            ERR_print_errors_fp(stderr);
+            goto error;
+        }
+    }
 
     // Sending client handshake to the server
     {
@@ -316,7 +339,7 @@ int main()
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n";
         const size_t handshake_size = strlen(handshake);
-        write(sd, handshake, handshake_size);
+        SSL_write(ssl, handshake, handshake_size);
     }
 
     // Handling handshake from the server
@@ -327,7 +350,7 @@ int main()
         // 2. Nothing is sent after the handshake so we can distinguish the frames
         // 3. The handshake fits into sizeof(buffer)
         char buffer[1024];
-        ssize_t buffer_size = read(sd, buffer, sizeof(buffer));
+        ssize_t buffer_size = SSL_read(ssl, buffer, sizeof(buffer));
         fwrite(buffer, 1, buffer_size, stdout);
         printf("------------------------------\n");
         if (buffer_size < 2 ||
@@ -340,15 +363,15 @@ int main()
 
     char payload[] = "khello";
 
-    send_frame(sd, WS_OPCODE_PING, (uint8_t *)payload, strlen(payload));
+    send_frame(ssl, WS_OPCODE_TEXT, (uint8_t *)payload, strlen(payload));
 
     // Receiving frames
     {
-        Ws_Frame *frame = read_frame(sd);
+        Ws_Frame *frame = read_frame(ssl);
         while (frame != NULL) {
             log_frame(stdout, frame);
             if (frame->opcode == WS_OPCODE_PING) {
-                send_frame(sd,
+                send_frame(ssl,
                            WS_OPCODE_PONG,
                            frame->payload,
                            frame->payload_len);
@@ -356,13 +379,18 @@ int main()
             free(frame);
 
             sleep(1);
-            send_frame(sd, WS_OPCODE_PING, (uint8_t*) payload, strlen(payload));
-            frame = read_frame(sd);
+            send_frame(ssl, WS_OPCODE_TEXT, (uint8_t*) payload, strlen(payload));
+            frame = read_frame(ssl);
         }
     }
 
     freeaddrinfo(addrs);
     close(sd);
+    SSL_set_shutdown(ssl, SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN);
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
+
     return 0;
 error:
     if (addrs != NULL) {
@@ -370,6 +398,14 @@ error:
     }
     if (sd != -1) {
         close(sd);
+    }
+    if (ssl != NULL) {
+        SSL_set_shutdown(ssl, SSL_RECEIVED_SHUTDOWN | SSL_SENT_SHUTDOWN);
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
+    }
+    if (ctx != NULL) {
+        SSL_CTX_free(ctx);
     }
     return -1;
 }
