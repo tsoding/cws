@@ -23,10 +23,69 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
               "Please compile this on 64 bit machine");
 
 // https://www.websocket.org/echo.html
-// #define HOST "irc-ws.chat.twitch.tv"
-#define HOST "echo.websocket.org"
+#define HOST "irc-ws.chat.twitch.tv"
 // #define SERVICE "80"
 #define SERVICE "443"
+
+char *slurp_file(const char *file_path)
+{
+    FILE *f = NULL;
+    char *buffer = NULL;
+
+    f = fopen(file_path, "r");
+    if (f == NULL) {
+        goto error;
+    }
+
+    if (fseek(f, 0, SEEK_END) < 0) {
+        goto error;
+    }
+
+    long m = ftell(f);
+    if (m < 0) {
+        goto error;
+    }
+
+    buffer = malloc((size_t) m + 1);
+    if (buffer == NULL) {
+        goto error;
+    }
+
+    if (fseek(f, 0, SEEK_SET) < 0) {
+        goto error;
+    }
+
+    fread(buffer, 1, (size_t) m, f);
+    if (ferror(f)) {
+        goto error;
+    }
+    buffer[m] = '\0';
+
+// ok:
+    fclose(f);
+
+    return buffer;
+
+error:
+    if (f) {
+        fclose(f);
+    }
+
+    if (buffer) {
+        free(buffer);
+    }
+
+    return NULL;
+}
+
+char *shift(int *argc, char ***argv)
+{
+    assert(*argc > 0);
+    char *result = **argv;
+    *argv += 1;
+    *argc -= 1;
+    return result;
+}
 
 typedef enum {
     WS_OPCODE_CONT  = 0x0,
@@ -68,8 +127,9 @@ typedef struct {
 
 void log_frame(FILE *stream, Ws_Frame *frame)
 {
-    fprintf(stream, "opcode:  %s\n", opcode_as_cstr(frame->opcode));
-    fprintf(stream, "payload: ");
+    fprintf(stream, "opcode:      %s\n", opcode_as_cstr(frame->opcode));
+    fprintf(stream, "payload_len: %"PRIu64"\n", frame->payload_len);
+    fprintf(stream, "payload:     ");
 #define RAW_LOG_FRAME
 #ifdef RAW_LOG_FRAME
     fwrite(frame->payload, 1, frame->payload_len, stream);
@@ -106,7 +166,10 @@ int send_frame(SSL *ssl, Ws_Opcode opcode, const uint8_t *payload, uint64_t payl
             }
         } else if (payload_len <= UINT16_MAX) {
             uint8_t data = (1 << 7) | 126;
-            uint16_t len = payload_len;
+            uint8_t len[2] = {
+                (payload_len >> 8) & 0xFF,
+                payload_len & 0xFF
+            };
 
             if (SSL_write(ssl, &data, sizeof(data)) <= 0) {
                 ERR_print_errors_fp(stderr);
@@ -118,6 +181,7 @@ int send_frame(SSL *ssl, Ws_Opcode opcode, const uint8_t *payload, uint64_t payl
                 return -1;
             }
         } else if (payload_len > UINT16_MAX) {
+            // TODO: reverse the bytes of 64 bit extended length in read_frame
             uint8_t data = (1 << 7) | 127;
 
             if (SSL_write(ssl, &data, sizeof(data)) <= 0) {
@@ -193,15 +257,16 @@ Ws_Frame *read_frame(SSL *ssl)
         uint8_t len = PAYLOAD_LEN(header);
         switch (len) {
         case 126: {
-            uint16_t ext_len = 0;
+            uint8_t ext_len[2] = {0};
             if (SSL_read(ssl, &ext_len, sizeof(ext_len)) <= 0) {
                 ERR_print_errors_fp(stderr);
                 goto error;
             }
-            payload_len = ext_len;
+            payload_len = (ext_len[0] << 8) | ext_len[1];
         }
         break;
         case 127: {
+            // TODO: reverse the bytes of 64 bit extended length in read_frame
             uint64_t ext_len = 0;
             if (SSL_read(ssl, &ext_len, sizeof(ext_len)) <= 0) {
                 ERR_print_errors_fp(stderr);
@@ -255,7 +320,7 @@ error:
     return NULL;
 }
 
-int main()
+int main(void)
 {
     // Resources to destroy at the end of the function
     int sd = -1;
@@ -263,38 +328,41 @@ int main()
     SSL_CTX *ctx = NULL;
     SSL *ssl = NULL;
 
-    struct addrinfo hints = {0};
-    hints.ai_family = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
+    // Establish plain connection
+    {
+        struct addrinfo hints = {0};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_protocol = IPPROTO_TCP;
 
-    if (getaddrinfo(HOST, SERVICE, &hints, &addrs) < 0) {
-        fprintf(stderr, "ERROR: Could not resolved address of `"HOST"`\n");
-        goto error;
-    }
+        if (getaddrinfo(HOST, SERVICE, &hints, &addrs) < 0) {
+            fprintf(stderr, "ERROR: Could not resolved address of `"HOST"`\n");
+            goto error;
+        }
 
-    for (struct addrinfo *addr = addrs; addr != NULL; addr = addr->ai_next) {
-        // TODO: don't recreate socket on each attempt
-        // Just create a single socket with the appropriate family and type
-        // and keep using it.
-        sd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+        for (struct addrinfo *addr = addrs; addr != NULL; addr = addr->ai_next) {
+            // TODO: don't recreate socket on each attempt
+            // Just create a single socket with the appropriate family and type
+            // and keep using it.
+            sd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+
+            if (sd == -1) {
+                break;
+            }
+
+            if (connect(sd, addr->ai_addr, addr->ai_addrlen) == 0) {
+                break;
+            }
+
+            close(sd);
+            sd = -1;
+        }
 
         if (sd == -1) {
-            break;
+            fprintf(stderr, "Could not connect to %s:%s: %s",
+                    HOST, SERVICE, strerror(errno));
+            goto error;
         }
-
-        if (connect(sd, addr->ai_addr, addr->ai_addrlen) == 0) {
-            break;
-        }
-
-        close(sd);
-        sd = -1;
-    }
-
-    if (sd == -1) {
-        fprintf(stderr, "Could not connect to %s:%s: %s",
-                HOST, SERVICE, strerror(errno));
-        goto error;
     }
 
     // Initialize SSL
@@ -328,22 +396,20 @@ int main()
         }
     }
 
-    // Sending client handshake to the server
+    // WebSocket handshake with the server
     {
         const char *handshake =
             "GET / HTTP/1.1\r\n"
             "Host: "HOST"\r\n"
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
+            // TODO: custom WebSocket key
             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
             "Sec-WebSocket-Version: 13\r\n"
             "\r\n";
         const size_t handshake_size = strlen(handshake);
         SSL_write(ssl, handshake, handshake_size);
-    }
 
-    // Handling handshake from the server
-    {
         // TODO: the server handshake is literally ignored
         // Right now we are making this assumptions:
         // 1. The server sent the successful handshake
@@ -361,10 +427,6 @@ int main()
         }
     }
 
-    char payload[] = "khello";
-
-    send_frame(ssl, WS_OPCODE_TEXT, (uint8_t *)payload, strlen(payload));
-
     // Receiving frames
     {
         Ws_Frame *frame = read_frame(ssl);
@@ -377,9 +439,6 @@ int main()
                            frame->payload_len);
             }
             free(frame);
-
-            sleep(1);
-            send_frame(ssl, WS_OPCODE_TEXT, (uint8_t*) payload, strlen(payload));
             frame = read_frame(ssl);
         }
     }
@@ -410,8 +469,6 @@ error:
     return -1;
 }
 
-// TODO: successfully send and receive IRC messages using Twitch WebSocket IRC API
-// https://dev.twitch.tv/docs/irc/guide#connecting-to-twitch-irc
 // TODO: successfully send and recieve messages using Discord API
 // TODO: Socket-like API
 // TODO: Turn this code into STB-style library
