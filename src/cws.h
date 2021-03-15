@@ -2,28 +2,28 @@
 #define CWS_H_
 
 typedef enum {
-    WS_OPCODE_CONT  = 0x0,
-    WS_OPCODE_TEXT  = 0x1,
-    WS_OPCODE_BIN   = 0x2,
-    WS_OPCODE_CLOSE = 0x8,
-    WS_OPCODE_PING  = 0x9,
-    WS_OPCODE_PONG  = 0xA,
-} Ws_Opcode;
+    CWS_OPCODE_CONT  = 0x0,
+    CWS_OPCODE_TEXT  = 0x1,
+    CWS_OPCODE_BIN   = 0x2,
+    CWS_OPCODE_CLOSE = 0x8,
+    CWS_OPCODE_PING  = 0x9,
+    CWS_OPCODE_PONG  = 0xA,
+} Cws_Opcode;
 
 typedef struct {
     char cstr[16];
-} Opcode_Name;
+} Cws_Opcode_Name;
 
-Opcode_Name opcode_name(Ws_Opcode opcode);
+Cws_Opcode_Name opcode_name(Cws_Opcode opcode);
 
 typedef struct {
     // TODO: no support for CONT frames
-    // Ws_Frame *next;
+    // Cws_Frame *next;
     bool fin;
-    Ws_Opcode opcode;
+    Cws_Opcode opcode;
     uint64_t payload_len;
     uint8_t payload[];
-} Ws_Frame;
+} Cws_Frame;
 
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
@@ -39,9 +39,9 @@ typedef struct {
 } Cws;
 
 int cws_handshake(Cws *cws, const char *host);
-int cws_send_frame(Cws *cws, Ws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
-Ws_Frame *cws_read_frame(Cws *cws);
-void cws_free_frame(Cws *cws, Ws_Frame *frame);
+int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
+Cws_Frame *cws_read_frame(Cws *cws);
+void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
 #endif // CWS_H_
 
@@ -84,27 +84,27 @@ error:
 }
 
 
-Opcode_Name opcode_name(Ws_Opcode opcode)
+Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
 {
-    Opcode_Name result = {0};
+    Cws_Opcode_Name result = {0};
 
     switch (opcode) {
-    case WS_OPCODE_CONT:
+    case CWS_OPCODE_CONT:
         snprintf(result.cstr, sizeof(result.cstr), "CONT");
         break;
-    case WS_OPCODE_TEXT:
+    case CWS_OPCODE_TEXT:
         snprintf(result.cstr, sizeof(result.cstr), "TEXT");
         break;
-    case WS_OPCODE_BIN:
+    case CWS_OPCODE_BIN:
         snprintf(result.cstr, sizeof(result.cstr), "BIN");
         break;
-    case WS_OPCODE_CLOSE:
+    case CWS_OPCODE_CLOSE:
         snprintf(result.cstr, sizeof(result.cstr), "CLOSE");
         break;
-    case WS_OPCODE_PING:
+    case CWS_OPCODE_PING:
         snprintf(result.cstr, sizeof(result.cstr), "PING");
         break;
-    case WS_OPCODE_PONG:
+    case CWS_OPCODE_PONG:
         snprintf(result.cstr, sizeof(result.cstr), "PONG");
         break;
     default:
@@ -115,14 +115,14 @@ Opcode_Name opcode_name(Ws_Opcode opcode)
 }
 
 // TODO: test all executing paths in read_frame
-Ws_Frame *cws_read_frame(Cws *cws)
+Cws_Frame *cws_read_frame(Cws *cws)
 {
 #define FIN(header)         ((header)[0] >> 7)
 #define OPCODE(header)      ((header)[0] & 0xF)
 #define MASK(header)        ((header)[1] >> 7)
 #define PAYLOAD_LEN(header) ((header)[1] & 0x7F)
 
-    Ws_Frame *frame = NULL;
+    Cws_Frame *frame = NULL;
 
     uint8_t header[2] = {0};
 
@@ -174,7 +174,7 @@ Ws_Frame *cws_read_frame(Cws *cws)
 
     // Read the payload
     {
-        frame = cws->alloc(cws->ator, sizeof(Ws_Frame) + payload_len);
+        frame = cws->alloc(cws->ator, sizeof(Cws_Frame) + payload_len);
         if (!frame) {
             goto error;
         }
@@ -199,7 +199,7 @@ error:
 }
 
 // TODO: test all executing paths in send_frame
-int cws_send_frame(Cws *cws, Ws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
+int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
     {
@@ -281,7 +281,7 @@ int cws_send_frame(Cws *cws, Ws_Opcode opcode, const uint8_t *payload, uint64_t 
     return 0;
 }
 
-void cws_free_frame(Cws *cws, Ws_Frame *frame)
+void cws_free_frame(Cws *cws, Cws_Frame *frame)
 {
     cws->free(cws->ator, frame, sizeof(*frame) + frame->payload_len);
 }

@@ -90,7 +90,7 @@ char *shift(int *argc, char ***argv)
     return result;
 }
 
-void log_frame(FILE *stream, Ws_Frame *frame)
+void log_frame(FILE *stream, Cws_Frame *frame)
 {
     fprintf(stream, "opcode:      %s\n", opcode_name(frame->opcode).cstr);
     fprintf(stream, "payload_len: %"PRIu64"\n", frame->payload_len);
@@ -218,19 +218,19 @@ int main(void)
 
     // Receiving frames
     {
-        cws_send_frame(&cws, WS_OPCODE_PING, NULL, 0);
-        Ws_Frame *frame = cws_read_frame(&cws);
+        cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
+        Cws_Frame *frame = cws_read_frame(&cws);
         while (frame != NULL) {
             log_frame(stdout, frame);
-            if (frame->opcode == WS_OPCODE_PING) {
+            if (frame->opcode == CWS_OPCODE_PING) {
                 cws_send_frame(&cws,
-                               WS_OPCODE_PONG,
+                               CWS_OPCODE_PONG,
                                frame->payload,
                                frame->payload_len);
             }
             cws_free_frame(&cws, frame);
             sleep(1);
-            cws_send_frame(&cws, WS_OPCODE_PING, NULL, 0);
+            cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
             frame = cws_read_frame(&cws);
         }
     }
