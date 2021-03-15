@@ -77,7 +77,7 @@ void log_frame(FILE *stream, Ws_Frame *frame)
     fprintf(stream, "\n");
 }
 
-
+// TODO: test all executing paths in send_frame
 int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
@@ -172,6 +172,7 @@ int send_frame(int sd, Ws_Opcode opcode, const uint8_t *payload, uint64_t payloa
     return 0;
 }
 
+// TODO: test all executing paths in read_frame
 Ws_Frame *read_frame(int sd)
 {
 #define FIN(header)         ((header)[0] >> 7)
@@ -324,6 +325,7 @@ int main()
         // Right now we are making this assumptions:
         // 1. The server sent the successful handshake
         // 2. Nothing is sent after the handshake so we can distinguish the frames
+        // 3. The handshake fits into sizeof(buffer)
         char buffer[1024];
         ssize_t buffer_size = read(sd, buffer, sizeof(buffer));
         fwrite(buffer, 1, buffer_size, stdout);
@@ -371,3 +373,9 @@ error:
     }
     return -1;
 }
+
+// TODO: successfully send and receive IRC messages using Twitch WebSocket IRC API
+// https://dev.twitch.tv/docs/irc/guide#connecting-to-twitch-irc
+// TODO: successfully send and recieve messages using Discord API
+// TODO: Socket-like API
+// TODO: Turn this code into STB-style library
