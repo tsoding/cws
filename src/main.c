@@ -91,13 +91,14 @@ char *shift(int *argc, char ***argv)
     return result;
 }
 
+#define RAW_LOG
+
 void log_frame(FILE *stream, Cws_Frame *frame)
 {
     fprintf(stream, "opcode:      %s\n", opcode_name(frame->opcode).cstr);
     fprintf(stream, "payload_len: %"PRIu64"\n", frame->payload_len);
     fprintf(stream, "payload:     ");
-#define RAW_LOG_FRAME
-#ifdef RAW_LOG_FRAME
+#ifdef RAW_LOG
     fwrite(frame->payload, 1, frame->payload_len, stream);
 #else
     for (uint64_t i = 0; i < frame->payload_len; ++i) {
@@ -107,11 +108,21 @@ void log_frame(FILE *stream, Cws_Frame *frame)
     fprintf(stream, "\n");
 }
 
-void log_message(FILE *stream, Cws_Message *message)
+void log_message(FILE *stream, Cws_Message message)
 {
-    while (message) {
-        log_frame(stream, &message->frame);
-        message = message->next;
+    fprintf(stream, "message kind: %s\n", opcode_name((Cws_Opcode) message.kind).cstr);
+    for (Cws_Message_Chunk *iter = message.chunks;
+            iter != NULL;
+            iter = iter->next) {
+        fprintf(stream, "chunk_payload_len: %"PRIu64"\n", iter->payload_len);
+#ifdef RAW_LOG
+        fwrite(iter->payload, 1, iter->payload_len, stream);
+#else
+        for (uint64_t i = 0; i < iter->payload_len; ++i) {
+            fprintf(stream, "0x%02X ", iter->payload[i]);
+        }
+#endif
+        fprintf(stream, "\n");
     }
     printf("------------------------------\n");
 }
@@ -230,13 +241,14 @@ int main(void)
     {
         const char *hello = "khello";
         cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
-        Cws_Message *message = cws_read_message(&cws);
-        while (message != NULL) {
+        Cws_Message message = {0};
+        int ret = cws_read_message(&cws, &message);
+        while (ret == 0) {
             log_message(stdout, message);
-            cws_free_message(&cws, message);
+            cws_free_message(&cws, &message);
             sleep(1);
             cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
-            message = cws_read_message(&cws);
+            ret = cws_read_message(&cws, &message);
         }
     }
 

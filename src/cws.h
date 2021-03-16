@@ -26,17 +26,23 @@ typedef struct {
     uint8_t *payload;
 } Cws_Frame;
 
-typedef struct Cws_Message Cws_Message;
-
-struct Cws_Message {
-    Cws_Frame frame;
-    Cws_Message *next;
-};
+typedef struct Cws_Message_Chunk Cws_Message_Chunk;
 
 typedef enum {
     CWS_MESSAGE_TEXT = CWS_OPCODE_TEXT,
     CWS_MESSAGE_BIN = CWS_OPCODE_BIN,
 } Cws_Message_Kind;
+
+typedef struct {
+    Cws_Message_Kind kind;
+    Cws_Message_Chunk *chunks;
+} Cws_Message;
+
+struct Cws_Message_Chunk {
+    Cws_Message_Chunk *next;
+    uint64_t payload_len;
+    uint8_t *payload;
+};
 
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
@@ -54,7 +60,7 @@ typedef struct {
 int cws_handshake(Cws *cws, const char *host);
 
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len);
-Cws_Message *cws_read_message(Cws *cws);
+int cws_read_message(Cws *cws, Cws_Message *message);
 void cws_free_message(Cws *cws, Cws_Message *message);
 
 int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
@@ -208,10 +214,10 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
 
         if (frame->payload_len > 0) {
             frame->payload = cws->alloc(cws->ator, payload_len);
-
             if (frame->payload == NULL) {
                 goto error;
             }
+            memset(frame->payload, 0, payload_len);
 
             // TODO: cws_read_frame does not handle when cws->read didn't read the whole payload
             if (cws->read(cws->socket, frame->payload, frame->payload_len) <= 0) {
@@ -326,10 +332,12 @@ int cws_send_message(Cws *cws,
     return cws_send_frame(cws, (Cws_Opcode) kind, payload, payload_len);
 }
 
-Cws_Message *cws_read_message(Cws *cws)
+int cws_read_message(Cws *cws, Cws_Message *message)
 {
-    Cws_Message *begin = NULL;
-    Cws_Message *end = NULL;
+    assert(message);
+    assert(message->chunks == NULL);
+
+    Cws_Message_Chunk *end = NULL;
 
     Cws_Frame frame = {0};
     int ret = cws_read_frame(cws, &frame);
@@ -354,20 +362,24 @@ Cws_Message *cws_read_message(Cws *cws)
         } else {
             // TODO: cws_read_message does not verify that the message starts with non CONT frame (does it have to start with non-CONT frame)?
             // TODO: cws_read_message does not verify that any non-fin "continuation" frames have the CONT opcode
-            if (begin == NULL) {
-                begin = cws->alloc(cws->ator, sizeof(*begin));
-                if (begin == NULL) {
+            if (end == NULL) {
+                end = cws->alloc(cws->ator, sizeof(*end));
+                if (end == NULL) {
                     goto error;
                 }
-                begin->frame = frame;
-                end = begin;
+                memset(end, 0, sizeof(*end));
+                end->payload = frame.payload;
+                end->payload_len = frame.payload_len;
+                message->chunks = end;
+                message->kind = (Cws_Message_Kind) frame.opcode;
             } else {
-                assert(end);
                 end->next = cws->alloc(cws->ator, sizeof(*end->next));
                 if (end->next == NULL) {
                     goto error;
                 }
-                end->next->frame = frame;
+                memset(end->next, 0, sizeof(*end->next));
+                end->next->payload = frame.payload;
+                end->next->payload_len = frame.payload_len;
                 end = end->next;
             }
 
@@ -383,21 +395,24 @@ Cws_Message *cws_read_message(Cws *cws)
         goto error;
     }
 
-    return begin;
+    return 0;
 error:
-    cws_free_message(cws, begin);
-    return NULL;
+    cws_free_message(cws, message);
+    return -1;
 }
 
 void cws_free_message(Cws *cws, Cws_Message *message)
 {
-    while (message) {
-        cws_free_frame(cws, &message->frame);
+    Cws_Message_Chunk *iter = message->chunks;
+    while (iter != NULL) {
+        cws->free(cws->ator, iter->payload, iter->payload_len);
 
-        Cws_Message *remove = message;
-        message = message->next;
+        Cws_Message_Chunk *remove = iter;
+        iter = iter->next;
         cws->free(cws->ator, remove, sizeof(*remove));
     }
+
+    message->chunks = NULL;
 }
 
 #endif // CWS_IMPLEMENTATION
