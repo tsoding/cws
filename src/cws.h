@@ -59,7 +59,7 @@ typedef struct {
 
 int cws_handshake(Cws *cws, const char *host);
 
-int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len);
+int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len, uint64_t chunk_len);
 int cws_read_message(Cws *cws, Cws_Message *message);
 void cws_free_message(Cws *cws, Cws_Message *message);
 
@@ -329,10 +329,33 @@ void cws_free_frame(Cws *cws, Cws_Frame *frame)
 int cws_send_message(Cws *cws,
                      Cws_Message_Kind kind,
                      const uint8_t *payload,
-                     uint64_t payload_len)
+                     uint64_t payload_len,
+                     uint64_t chunk_len)
 {
-    // TODO: cws_send_message does not support message fragmentation
-    return cws_send_frame(cws, true, (Cws_Opcode) kind, payload, payload_len);
+    bool first = true;
+    while (payload_len > 0) {
+        uint64_t len = payload_len;
+        if (len > chunk_len) {
+            len = chunk_len;
+        }
+
+        if (cws_send_frame(
+                    cws,
+                    payload_len - len == 0,
+                    first ? (Cws_Opcode) kind : CWS_OPCODE_CONT,
+                    payload,
+                    len) < 0) {
+            goto error;
+        }
+
+        payload += len;
+        payload_len -= len;
+        first = false;
+    }
+
+    return 0;
+error:
+    return -1;
 }
 
 int cws_read_message(Cws *cws, Cws_Message *message)

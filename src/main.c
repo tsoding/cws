@@ -240,14 +240,14 @@ int main(void)
     // Receiving frames
     {
         const char *hello = "khello";
-        cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
+        cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello), 1024);
         Cws_Message message = {0};
         int ret = cws_read_message(&cws, &message);
         while (ret == 0) {
             log_message(stdout, message);
             cws_free_message(&cws, &message);
             sleep(1);
-            cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
+            cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello), 1024);
             ret = cws_read_message(&cws, &message);
         }
     }
@@ -277,3 +277,5 @@ error:
     }
     return -1;
 }
+// TODO: Autobahn test suite
+// https://crossbar.io/docs/WebSocket-Compliance-Testing/
