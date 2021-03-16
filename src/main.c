@@ -158,6 +158,8 @@ int main(void)
     SSL_CTX *ctx = NULL;
     SSL *ssl = NULL;
 
+    // TODO: move establishing plain and SSL connection to cwt
+
     // Establish plain connection
     {
         struct addrinfo hints = {0};
