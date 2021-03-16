@@ -18,8 +18,6 @@ Cws_Opcode_Name opcode_name(Cws_Opcode opcode);
 bool is_control(Cws_Opcode opcode);
 
 typedef struct {
-    // TODO: no support for CONT frames
-    // Cws_Frame *next;
     bool fin;
     Cws_Opcode opcode;
     uint64_t payload_len;
