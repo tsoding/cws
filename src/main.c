@@ -113,7 +113,7 @@ ssize_t cws_ssl_read(void *socket, void *buf, size_t count)
 
 ssize_t cws_ssl_write(void *socket, const void *buf, size_t count)
 {
-    return SSL_write((SSL*) socket, buf, count); 
+    return SSL_write((SSL*) socket, buf, count);
 }
 
 void *cws_malloc(void *ator, size_t size)
@@ -218,20 +218,22 @@ int main(void)
 
     // Receiving frames
     {
-        cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
-        Cws_Frame *frame = cws_read_frame(&cws);
-        while (frame != NULL) {
-            log_frame(stdout, frame);
-            if (frame->opcode == CWS_OPCODE_PING) {
+        const char *hello = "khello";
+        cws_send_frame(&cws, CWS_OPCODE_PING, (uint8_t*)hello, strlen(hello));
+        Cws_Frame frame = {0};
+        int res = cws_read_frame(&cws, &frame);
+        while (res == 0) {
+            log_frame(stdout, &frame);
+            if (frame.opcode == CWS_OPCODE_PING) {
                 cws_send_frame(&cws,
                                CWS_OPCODE_PONG,
-                               frame->payload,
-                               frame->payload_len);
+                               frame.payload,
+                               frame.payload_len);
             }
-            cws_free_frame(&cws, frame);
+            cws_free_frame(&cws, &frame);
             sleep(1);
-            cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
-            frame = cws_read_frame(&cws);
+            cws_send_frame(&cws, CWS_OPCODE_PING, (uint8_t*)hello, strlen(hello));
+            res = cws_read_frame(&cws, &frame);
         }
     }
 

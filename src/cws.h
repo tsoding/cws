@@ -22,7 +22,7 @@ typedef struct {
     bool fin;
     Cws_Opcode opcode;
     uint64_t payload_len;
-    uint8_t payload[];
+    uint8_t *payload;
 } Cws_Frame;
 
 typedef enum {
@@ -56,7 +56,7 @@ Cws_Message *cws_read_message(Cws *cws);
 void cws_free_message(Cws *cws, Cws_Message *message);
 
 int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
-Cws_Frame *cws_read_frame(Cws *cws);
+int cws_read_frame(Cws *cws, Cws_Frame *frame);
 void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
 #endif // CWS_H_
@@ -131,14 +131,13 @@ Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
 }
 
 // TODO: test all executing paths in read_frame
-Cws_Frame *cws_read_frame(Cws *cws)
+int cws_read_frame(Cws *cws, Cws_Frame *frame)
 {
+    assert(frame);
 #define FIN(header)         ((header)[0] >> 7)
 #define OPCODE(header)      ((header)[0] & 0xF)
 #define MASK(header)        ((header)[1] >> 7)
 #define PAYLOAD_LEN(header) ((header)[1] & 0x7F)
-
-    Cws_Frame *frame = NULL;
 
     uint8_t header[2] = {0};
 
@@ -190,28 +189,30 @@ Cws_Frame *cws_read_frame(Cws *cws)
 
     // Read the payload
     {
-        frame = cws->alloc(cws->ator, sizeof(Cws_Frame) + payload_len);
-        if (!frame) {
-            goto error;
-        }
-
         frame->fin = FIN(header);
         frame->opcode = OPCODE(header);
         frame->payload_len = payload_len;
 
         if (frame->payload_len > 0) {
+            frame->payload = cws->alloc(cws->ator, payload_len);
+
+            if (frame->payload == NULL) {
+                goto error;
+            }
+
+            // TODO: cws_read_frame does not handle when cws->read didn't read the whole payload
             if (cws->read(cws->socket, frame->payload, frame->payload_len) <= 0) {
                 goto error;
             }
         }
     }
 
-    return frame;
+    return 0;
 error:
     if (frame) {
         cws_free_frame(cws, frame);
     }
-    return NULL;
+    return -1;
 }
 
 // TODO: test all executing paths in send_frame
@@ -299,7 +300,8 @@ int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t
 
 void cws_free_frame(Cws *cws, Cws_Frame *frame)
 {
-    cws->free(cws->ator, frame, sizeof(*frame) + frame->payload_len);
+    cws->free(cws->ator, frame->payload, frame->payload_len);
+    frame->payload = NULL;
 }
 
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len)
