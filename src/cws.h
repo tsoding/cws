@@ -25,6 +25,17 @@ typedef struct {
     uint8_t payload[];
 } Cws_Frame;
 
+typedef enum {
+    CWS_MESSAGE_TEXT,
+    CWS_MESSAGE_BINARY,
+} Cws_Message_Kind;
+
+typedef struct {
+    Cws_Message_Kind kind;
+    uint64_t payload_len;
+    uint8_t payload[];
+} Cws_Message;
+
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
 
@@ -39,6 +50,11 @@ typedef struct {
 } Cws;
 
 int cws_handshake(Cws *cws, const char *host);
+
+int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len);
+Cws_Message *cws_read_message(Cws *cws);
+void cws_free_message(Cws *cws, Cws_Message *message);
+
 int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
 Cws_Frame *cws_read_frame(Cws *cws);
 void cws_free_frame(Cws *cws, Cws_Frame *frame);
@@ -284,6 +300,27 @@ int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t
 void cws_free_frame(Cws *cws, Cws_Frame *frame)
 {
     cws->free(cws->ator, frame, sizeof(*frame) + frame->payload_len);
+}
+
+int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len)
+{
+    (void) cws;
+    (void) kind;
+    (void) payload;
+    (void) payload_len;
+    assert(false && "TODO: cws_send_message");
+    return -1;
+}
+
+Cws_Message *cws_read_message(Cws *cws)
+{
+    (void) cws;
+    assert(false && "TODO: cws_send_message");
+}
+
+void cws_free_message(Cws *cws, Cws_Message *message)
+{
+    cws->free(cws->ator, message, sizeof(*message) + message->payload_len);
 }
 
 #endif // CWS_IMPLEMENTATION
