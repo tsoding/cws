@@ -33,7 +33,7 @@ typedef enum {
 typedef struct {
     Cws_Message_Kind kind;
     uint64_t payload_len;
-    uint8_t payload[];
+    uint8_t *payload;
 } Cws_Message;
 
 typedef void* Cws_Socket;
