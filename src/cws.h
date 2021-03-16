@@ -63,7 +63,7 @@ int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, ui
 int cws_read_message(Cws *cws, Cws_Message *message);
 void cws_free_message(Cws *cws, Cws_Message *message);
 
-int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
+int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
 int cws_read_frame(Cws *cws, Cws_Frame *frame);
 void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
@@ -235,12 +235,15 @@ error:
 }
 
 // TODO: test all executing paths in send_frame
-int cws_send_frame(Cws *cws, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
+int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
     {
         // NOTE: FIN is always set
-        uint8_t data = (1 << 7) | opcode;
+        uint8_t data = opcode;
+        if (fin) {
+            data |= (1 << 7);
+        }
         if (cws->write(cws->socket, &data, 1) < 0) {
             return -1;
         }
@@ -329,7 +332,7 @@ int cws_send_message(Cws *cws,
                      uint64_t payload_len)
 {
     // TODO: cws_send_message does not support message fragmentation
-    return cws_send_frame(cws, (Cws_Opcode) kind, payload, payload_len);
+    return cws_send_frame(cws, true, (Cws_Opcode) kind, payload, payload_len);
 }
 
 int cws_read_message(Cws *cws, Cws_Message *message)
@@ -350,6 +353,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
                 break;
             case CWS_OPCODE_PING:
                 cws_send_frame(cws,
+                               true,
                                CWS_OPCODE_PONG,
                                frame.payload,
                                frame.payload_len);
