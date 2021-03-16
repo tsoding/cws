@@ -74,6 +74,7 @@ int cws_handshake(Cws *cws, const char *host)
     char handshake[1024] = {0};
 
     snprintf(handshake, sizeof(handshake),
+             // TODO: customizable resource path
              "GET / HTTP/1.1\r\n"
              "Host: %s\r\n"
              "Upgrade: websocket\r\n"
