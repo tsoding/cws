@@ -26,7 +26,8 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
               "Please compile this on 64 bit machine");
 
 // https://www.websocket.org/echo.html
-#define HOST "irc-ws.chat.twitch.tv"
+#define HOST "echo.websocket.org"
+// #define HOST "irc-ws.chat.twitch.tv"
 // #define SERVICE "80"
 #define SERVICE "443"
 
@@ -104,6 +105,15 @@ void log_frame(FILE *stream, Cws_Frame *frame)
     }
 #endif
     fprintf(stream, "\n");
+}
+
+void log_message(FILE *stream, Cws_Message *message)
+{
+    while (message) {
+        log_frame(stream, &message->frame);
+        message = message->next;
+    }
+    printf("------------------------------\n");
 }
 
 ssize_t cws_ssl_read(void *socket, void *buf, size_t count)
@@ -219,21 +229,14 @@ int main(void)
     // Receiving frames
     {
         const char *hello = "khello";
-        cws_send_frame(&cws, CWS_OPCODE_PING, (uint8_t*)hello, strlen(hello));
-        Cws_Frame frame = {0};
-        int res = cws_read_frame(&cws, &frame);
-        while (res == 0) {
-            log_frame(stdout, &frame);
-            if (frame.opcode == CWS_OPCODE_PING) {
-                cws_send_frame(&cws,
-                               CWS_OPCODE_PONG,
-                               frame.payload,
-                               frame.payload_len);
-            }
-            cws_free_frame(&cws, &frame);
+        cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
+        Cws_Message *message = cws_read_message(&cws);
+        while (message != NULL) {
+            log_message(stdout, message);
+            cws_free_message(&cws, message);
             sleep(1);
-            cws_send_frame(&cws, CWS_OPCODE_PING, (uint8_t*)hello, strlen(hello));
-            res = cws_read_frame(&cws, &frame);
+            cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello));
+            message = cws_read_message(&cws);
         }
     }
 

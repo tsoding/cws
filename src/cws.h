@@ -15,6 +15,7 @@ typedef struct {
 } Cws_Opcode_Name;
 
 Cws_Opcode_Name opcode_name(Cws_Opcode opcode);
+bool is_control(Cws_Opcode opcode);
 
 typedef struct {
     // TODO: no support for CONT frames
@@ -25,16 +26,17 @@ typedef struct {
     uint8_t *payload;
 } Cws_Frame;
 
-typedef enum {
-    CWS_MESSAGE_TEXT,
-    CWS_MESSAGE_BINARY,
-} Cws_Message_Kind;
+typedef struct Cws_Message Cws_Message;
 
-typedef struct {
-    Cws_Message_Kind kind;
-    uint64_t payload_len;
-    uint8_t *payload;
-} Cws_Message;
+struct Cws_Message {
+    Cws_Frame frame;
+    Cws_Message *next;
+};
+
+typedef enum {
+    CWS_MESSAGE_TEXT = CWS_OPCODE_TEXT,
+    CWS_MESSAGE_BIN = CWS_OPCODE_BIN,
+} Cws_Message_Kind;
 
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
@@ -100,6 +102,11 @@ error:
 }
 
 
+bool is_control(Cws_Opcode opcode)
+{
+    return 0x8 <= opcode && opcode <= 0xF;
+}
+
 Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
 {
     Cws_Opcode_Name result = {0};
@@ -124,7 +131,13 @@ Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
         snprintf(result.cstr, sizeof(result.cstr), "PONG");
         break;
     default:
-        snprintf(result.cstr, sizeof(result.cstr), "UNKNOWN(%X)", opcode & 0xF);
+        if (0x3 <= opcode && opcode <= 0x7) {
+            snprintf(result.cstr, sizeof(result.cstr), "NONCONTROL(0x%X)", opcode & 0xF);
+        } else if (0xB <= opcode && opcode <= 0xF) {
+            snprintf(result.cstr, sizeof(result.cstr), "CONTROL(0x%X)", opcode & 0xF);
+        } else {
+            snprintf(result.cstr, sizeof(result.cstr), "INVALID(0x%X)", opcode & 0xF);
+        }
     }
 
     return result;
@@ -304,25 +317,87 @@ void cws_free_frame(Cws *cws, Cws_Frame *frame)
     frame->payload = NULL;
 }
 
-int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len)
+int cws_send_message(Cws *cws,
+                     Cws_Message_Kind kind,
+                     const uint8_t *payload,
+                     uint64_t payload_len)
 {
-    (void) cws;
-    (void) kind;
-    (void) payload;
-    (void) payload_len;
-    assert(false && "TODO: cws_send_message");
-    return -1;
+    // TODO: cws_send_message does not support message fragmentation
+    return cws_send_frame(cws, (Cws_Opcode) kind, payload, payload_len);
 }
 
 Cws_Message *cws_read_message(Cws *cws)
 {
-    (void) cws;
-    assert(false && "TODO: cws_send_message");
+    Cws_Message *begin = NULL;
+    Cws_Message *end = NULL;
+
+    Cws_Frame frame = {0};
+    int ret = cws_read_frame(cws, &frame);
+    while (ret == 0) {
+        if (is_control(frame.opcode)) {
+            switch (frame.opcode) {
+            case CWS_OPCODE_CLOSE:
+                // TODO: cws_read_message does not handle CLOSE opcode properly
+                goto error;
+                break;
+            case CWS_OPCODE_PING:
+                cws_send_frame(cws,
+                               CWS_OPCODE_PONG,
+                               frame.payload,
+                               frame.payload_len);
+                break;
+            default: {
+            }
+            }
+
+            cws_free_frame(cws, &frame);
+        } else {
+            // TODO: cws_read_message does not verify that the message starts with non CONT frame (does it have to start with non-CONT frame)?
+            // TODO: cws_read_message does not verify that any non-fin "continuation" frames have the CONT opcode
+            if (begin == NULL) {
+                begin = cws->alloc(cws->ator, sizeof(*begin));
+                if (begin == NULL) {
+                    goto error;
+                }
+                begin->frame = frame;
+                end = begin;
+            } else {
+                assert(end);
+                end->next = cws->alloc(cws->ator, sizeof(*end->next));
+                if (end->next == NULL) {
+                    goto error;
+                }
+                end->next->frame = frame;
+                end = end->next;
+            }
+
+            if (frame.fin) {
+                break;
+            }
+        }
+
+        ret = cws_read_frame(cws, &frame);
+    }
+
+    if (ret < 0) {
+        goto error;
+    }
+
+    return begin;
+error:
+    cws_free_message(cws, begin);
+    return NULL;
 }
 
 void cws_free_message(Cws *cws, Cws_Message *message)
 {
-    cws->free(cws->ator, message, sizeof(*message) + message->payload_len);
+    while (message) {
+        cws_free_frame(cws, &message->frame);
+
+        Cws_Message *remove = message;
+        message = message->next;
+        cws->free(cws->ator, remove, sizeof(*remove));
+    }
 }
 
 #endif // CWS_IMPLEMENTATION
