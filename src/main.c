@@ -26,7 +26,8 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
               "Please compile this on 64 bit machine");
 
 // https://www.websocket.org/echo.html
-#define HOST "irc-ws.chat.twitch.tv"
+#define HOST "echo.websocket.org"
+// #define HOST "irc-ws.chat.twitch.tv"
 // #define SERVICE "80"
 #define SERVICE "443"
 
@@ -90,13 +91,14 @@ char *shift(int *argc, char ***argv)
     return result;
 }
 
+#define RAW_LOG
+
 void log_frame(FILE *stream, Cws_Frame *frame)
 {
     fprintf(stream, "opcode:      %s\n", opcode_name(frame->opcode).cstr);
     fprintf(stream, "payload_len: %"PRIu64"\n", frame->payload_len);
     fprintf(stream, "payload:     ");
-#define RAW_LOG_FRAME
-#ifdef RAW_LOG_FRAME
+#ifdef RAW_LOG
     fwrite(frame->payload, 1, frame->payload_len, stream);
 #else
     for (uint64_t i = 0; i < frame->payload_len; ++i) {
@@ -106,6 +108,25 @@ void log_frame(FILE *stream, Cws_Frame *frame)
     fprintf(stream, "\n");
 }
 
+void log_message(FILE *stream, Cws_Message message)
+{
+    fprintf(stream, "message kind: %s\n", opcode_name((Cws_Opcode) message.kind).cstr);
+    for (Cws_Message_Chunk *iter = message.chunks;
+            iter != NULL;
+            iter = iter->next) {
+        fprintf(stream, "chunk_payload_len: %"PRIu64"\n", iter->payload_len);
+#ifdef RAW_LOG
+        fwrite(iter->payload, 1, iter->payload_len, stream);
+#else
+        for (uint64_t i = 0; i < iter->payload_len; ++i) {
+            fprintf(stream, "0x%02X ", iter->payload[i]);
+        }
+#endif
+        fprintf(stream, "\n");
+    }
+    printf("------------------------------\n");
+}
+
 ssize_t cws_ssl_read(void *socket, void *buf, size_t count)
 {
     return SSL_read((SSL*) socket, buf, count);
@@ -113,7 +134,7 @@ ssize_t cws_ssl_read(void *socket, void *buf, size_t count)
 
 ssize_t cws_ssl_write(void *socket, const void *buf, size_t count)
 {
-    return SSL_write((SSL*) socket, buf, count); 
+    return SSL_write((SSL*) socket, buf, count);
 }
 
 void *cws_malloc(void *ator, size_t size)
@@ -218,20 +239,17 @@ int main(void)
 
     // Receiving frames
     {
-        cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
-        Cws_Frame *frame = cws_read_frame(&cws);
-        while (frame != NULL) {
-            log_frame(stdout, frame);
-            if (frame->opcode == CWS_OPCODE_PING) {
-                cws_send_frame(&cws,
-                               CWS_OPCODE_PONG,
-                               frame->payload,
-                               frame->payload_len);
-            }
-            cws_free_frame(&cws, frame);
+        const char *hello = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
+
+        cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello), 100);
+        Cws_Message message = {0};
+        int ret = cws_read_message(&cws, &message);
+        while (ret == 0) {
+            log_message(stdout, message);
+            cws_free_message(&cws, &message);
             sleep(1);
-            cws_send_frame(&cws, CWS_OPCODE_PING, NULL, 0);
-            frame = cws_read_frame(&cws);
+            cws_send_message(&cws, CWS_MESSAGE_BIN, (uint8_t*)hello, strlen(hello), 100);
+            ret = cws_read_message(&cws, &message);
         }
     }
 
@@ -260,3 +278,5 @@ error:
     }
     return -1;
 }
+// TODO: Autobahn test suite
+// https://crossbar.io/docs/WebSocket-Compliance-Testing/
