@@ -265,6 +265,7 @@ error:
     return -1;
 }
 
+// TODO cws_send_frame() does not set Cws.error correctly
 int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
@@ -281,6 +282,7 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
 
     // Send masked and payload length
     {
+        // TODO: do we need to reverse the bytes on a machine with a different endianess than x86?
         // NOTE: client frames are always masked
         if (payload_len < 126) {
             uint8_t data = (1 << 7) | payload_len;
@@ -291,8 +293,8 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
         } else if (payload_len <= UINT16_MAX) {
             uint8_t data = (1 << 7) | 126;
             uint8_t len[2] = {
-                (payload_len >> 8) & 0xFF,
-                payload_len & 0xFF
+                (payload_len >> (8 * 1)) & 0xFF,
+                (payload_len >> (8 * 0)) & 0xFF
             };
 
             if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
@@ -303,14 +305,23 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
                 return -1;
             }
         } else if (payload_len > UINT16_MAX) {
-            // TODO: reverse the bytes of 64 bit extended length in read_frame
             uint8_t data = (1 << 7) | 127;
+            uint8_t len[8] = {
+                (payload_len >> (8 * 7)) & 0xFF,
+                (payload_len >> (8 * 6)) & 0xFF,
+                (payload_len >> (8 * 5)) & 0xFF,
+                (payload_len >> (8 * 4)) & 0xFF,
+                (payload_len >> (8 * 3)) & 0xFF,
+                (payload_len >> (8 * 2)) & 0xFF,
+                (payload_len >> (8 * 1)) & 0xFF,
+                (payload_len >> (8 * 0)) & 0xFF
+            };
 
             if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
                 return -1;
             }
 
-            if (cws->write(cws->socket, &payload_len, sizeof(payload_len)) <= 0) {
+            if (cws->write(cws->socket, &len, sizeof(len)) <= 0) {
                 return -1;
             }
         }
@@ -321,7 +332,7 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
     // Generate and send mask
     {
         for (size_t i = 0; i < 4; ++i) {
-            mask[i] = rand() % 256;
+            mask[i] = rand() % 0x100;
         }
 
         if (cws->write(cws->socket, mask, sizeof(mask)) <= 0) {
