@@ -166,7 +166,6 @@ Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
     return result;
 }
 
-// TODO: test all executing paths in read_frame
 int cws_read_frame(Cws *cws, Cws_Frame *frame)
 {
     assert(frame->payload == NULL && "You forgot to call cws_free_frame() before calling cws_read_frame()");
@@ -260,7 +259,6 @@ error:
     return -1;
 }
 
-// TODO: test all executing paths in send_frame
 int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
     // Send FIN and OPCODE
@@ -487,3 +485,5 @@ void cws_free_message(Cws *cws, Cws_Message *message)
 }
 
 #endif // CWS_IMPLEMENTATION
+// TODO: Test with Autobahn test suite
+// https://crossbar.io/docs/WebSocket-Compliance-Testing/

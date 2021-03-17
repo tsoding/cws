@@ -280,5 +280,3 @@ error:
     }
     return -1;
 }
-// TODO: Autobahn test suite
-// https://crossbar.io/docs/WebSocket-Compliance-Testing/
