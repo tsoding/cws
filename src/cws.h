@@ -45,8 +45,8 @@ struct Cws_Message_Chunk {
 typedef enum {
     // No error has occurred
     CWS_NO_ERROR = 0,
-    // cws_handshake() has failed
-    CWS_HANDSHAKE_ERROR,
+    // cws_client_handshake() has failed
+    CWS_CLIENT_HANDSHAKE_ERROR,
     // Cws.read or Cws.write have failed
     CWS_SOCKET_ERROR,
     // Cws.alloc has failed
@@ -70,7 +70,7 @@ typedef struct {
     void (*free)(Cws_Allocator ator, void *data, size_t size);
 } Cws;
 
-int cws_handshake(Cws *cws, const char *host);
+int cws_client_handshake(Cws *cws, const char *host);
 
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len, uint64_t chunk_len);
 int cws_read_message(Cws *cws, Cws_Message *message);
@@ -84,7 +84,7 @@ void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
 #ifdef CWS_IMPLEMENTATION
 
-int cws_handshake(Cws *cws, const char *host)
+int cws_client_handshake(Cws *cws, const char *host)
 {
     cws->error = CWS_NO_ERROR;
 
@@ -116,7 +116,7 @@ int cws_handshake(Cws *cws, const char *host)
     if (buffer_size < 2 ||
             buffer[buffer_size - 2] != '\r' ||
             buffer[buffer_size - 1] != '\n') {
-        cws->error = CWS_HANDSHAKE_ERROR;
+        cws->error = CWS_CLIENT_HANDSHAKE_ERROR;
         goto error;
     }
     return 0;

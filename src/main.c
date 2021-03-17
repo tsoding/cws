@@ -234,7 +234,7 @@ int main(void)
     };
 
     // WebSocket handshake with the server
-    if (cws_handshake(&cws, HOST) < 0) {
+    if (cws_client_handshake(&cws, HOST) < 0) {
         fprintf(stderr, "ERROR: Server response is sus ngl\n");
         goto error;
     }
