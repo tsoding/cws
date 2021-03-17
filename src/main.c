@@ -17,8 +17,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "./sv.h"
-
 #define CWS_IMPLEMENTATION
 #include "./cws.h"
 
