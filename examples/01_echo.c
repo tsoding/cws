@@ -25,8 +25,6 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
 
 // https://www.websocket.org/echo.html
 #define HOST "echo.websocket.org"
-// #define HOST "irc-ws.chat.twitch.tv"
-// #define SERVICE "80"
 #define SERVICE "443"
 
 #define RAW_LOG
