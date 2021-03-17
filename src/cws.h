@@ -42,10 +42,25 @@ struct Cws_Message_Chunk {
     uint8_t *payload;
 };
 
+typedef enum {
+    // No error has occurred
+    CWS_NO_ERROR = 0,
+    // cws_handshake() has failed
+    CWS_HANDSHAKE_ERROR,
+    // Cws.read or Cws.write have failed
+    CWS_SOCKET_ERROR,
+    // Cws.alloc has failed
+    CWS_ALLOCATOR_ERROR,
+    // Server sent CLOSE frame during cws_read_message()
+    CWS_SERVER_CLOSE_ERROR,
+} Cws_Error;
+
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
 
 typedef struct {
+    Cws_Error error;
+
     Cws_Socket socket;
     ssize_t (*read)(Cws_Socket socket, void *buf, size_t count);
     ssize_t (*write)(Cws_Socket socket, const void *buf, size_t count);
@@ -71,6 +86,8 @@ void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
 int cws_handshake(Cws *cws, const char *host)
 {
+    cws->error = CWS_NO_ERROR;
+
     char handshake[1024] = {0};
 
     snprintf(handshake, sizeof(handshake),
@@ -99,6 +116,7 @@ int cws_handshake(Cws *cws, const char *host)
     if (buffer_size < 2 ||
             buffer[buffer_size - 2] != '\r' ||
             buffer[buffer_size - 1] != '\n') {
+        cws->error = CWS_HANDSHAKE_ERROR;
         goto error;
     }
     return 0;
@@ -151,7 +169,10 @@ Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
 // TODO: test all executing paths in read_frame
 int cws_read_frame(Cws *cws, Cws_Frame *frame)
 {
-    assert(frame);
+    assert(frame->payload == NULL && "You forgot to call cws_free_frame() before calling cws_read_frame()");
+
+    cws->error = CWS_NO_ERROR;
+
 #define FIN(header)         ((header)[0] >> 7)
 #define OPCODE(header)      ((header)[0] & 0xF)
 #define MASK(header)        ((header)[1] >> 7)
@@ -161,6 +182,7 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
 
     // Read the header
     if (cws->read(cws->socket, header, sizeof(header)) <= 0) {
+        cws->error = CWS_SOCKET_ERROR;
         goto error;
     }
 
@@ -173,6 +195,7 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
         case 126: {
             uint8_t ext_len[2] = {0};
             if (cws->read(cws->socket, &ext_len, sizeof(ext_len)) <= 0) {
+                cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
             payload_len = (ext_len[0] << 8) | ext_len[1];
@@ -182,6 +205,7 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
             // TODO: reverse the bytes of 64 bit extended length in read_frame
             uint64_t ext_len = 0;
             if (cws->read(cws->socket, &ext_len, sizeof(ext_len)) <= 0) {
+                cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
             payload_len = ext_len;
@@ -200,6 +224,7 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
 
         if (masked) {
             if (cws->read(cws->socket, &mask, sizeof(mask)) <= 0) {
+                cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
         }
@@ -214,12 +239,14 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
         if (frame->payload_len > 0) {
             frame->payload = cws->alloc(cws->ator, payload_len);
             if (frame->payload == NULL) {
+                cws->error = CWS_ALLOCATOR_ERROR;
                 goto error;
             }
             memset(frame->payload, 0, payload_len);
 
             // TODO: cws_read_frame does not handle when cws->read didn't read the whole payload
             if (cws->read(cws->socket, frame->payload, frame->payload_len) <= 0) {
+                cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
         }
@@ -331,6 +358,8 @@ int cws_send_message(Cws *cws,
                      uint64_t payload_len,
                      uint64_t chunk_len)
 {
+    cws->error = CWS_NO_ERROR;
+
     bool first = true;
     while (payload_len > 0) {
         uint64_t len = payload_len;
@@ -359,8 +388,9 @@ error:
 
 int cws_read_message(Cws *cws, Cws_Message *message)
 {
-    assert(message);
-    assert(message->chunks == NULL);
+    assert(message->chunks == NULL && "You forgot to cws_free_message() before calling cws_read_message()");
+
+    cws->error = CWS_NO_ERROR;
 
     Cws_Message_Chunk *end = NULL;
 
@@ -369,18 +399,23 @@ int cws_read_message(Cws *cws, Cws_Message *message)
     while (ret == 0) {
         if (is_control(frame.opcode)) {
             switch (frame.opcode) {
-            case CWS_OPCODE_CLOSE:
-                // TODO: cws_read_message does not handle CLOSE opcode properly
+            case CWS_OPCODE_CLOSE: {
+                cws->error = CWS_SERVER_CLOSE_ERROR;
                 goto error;
-                break;
+            }
+            break;
             case CWS_OPCODE_PING:
-                cws_send_frame(cws,
-                               true,
-                               CWS_OPCODE_PONG,
-                               frame.payload,
-                               frame.payload_len);
+                if (cws_send_frame(
+                            cws,
+                            true,
+                            CWS_OPCODE_PONG,
+                            frame.payload,
+                            frame.payload_len) < 0) {
+                    goto error;
+                }
                 break;
             default: {
+                // Ignore any other control frames for now
             }
             }
 
@@ -391,6 +426,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             if (end == NULL) {
                 end = cws->alloc(cws->ator, sizeof(*end));
                 if (end == NULL) {
+                    cws->error = CWS_ALLOCATOR_ERROR;
                     goto error;
                 }
                 memset(end, 0, sizeof(*end));
@@ -401,6 +437,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             } else {
                 end->next = cws->alloc(cws->ator, sizeof(*end->next));
                 if (end->next == NULL) {
+                    cws->error = CWS_ALLOCATOR_ERROR;
                     goto error;
                 }
                 memset(end->next, 0, sizeof(*end->next));
@@ -408,6 +445,11 @@ int cws_read_message(Cws *cws, Cws_Message *message)
                 end->next->payload_len = frame.payload_len;
                 end = end->next;
             }
+
+            // The frame's payload has been moved to the message chunk (moved as in C++ moved,
+            // the ownership of the payload belongs to message now)
+            frame.payload = NULL;
+            frame.payload_len = 0;
 
             if (frame.fin) {
                 break;
@@ -424,6 +466,9 @@ int cws_read_message(Cws *cws, Cws_Message *message)
     return 0;
 error:
     cws_free_message(cws, message);
+    if (frame.payload) {
+        cws_free_frame(cws, &frame);
+    }
     return -1;
 }
 
