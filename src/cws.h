@@ -189,6 +189,7 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
 
     // Parse the payload length
     {
+        // TODO: do we need to reverse the bytes on a machine with a different endianess than x86?
         uint8_t len = PAYLOAD_LEN(header);
         switch (len) {
         case 126: {
@@ -197,17 +198,22 @@ int cws_read_frame(Cws *cws, Cws_Frame *frame)
                 cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
-            payload_len = (ext_len[0] << 8) | ext_len[1];
+
+            for (size_t i = 0; i < sizeof(ext_len); ++i) {
+                payload_len = (payload_len << 8) | ext_len[i];
+            }
         }
         break;
         case 127: {
-            // TODO: reverse the bytes of 64 bit extended length in read_frame
-            uint64_t ext_len = 0;
+            uint8_t ext_len[8] = {0};
             if (cws->read(cws->socket, &ext_len, sizeof(ext_len)) <= 0) {
                 cws->error = CWS_SOCKET_ERROR;
                 goto error;
             }
-            payload_len = ext_len;
+
+            for (size_t i = 0; i < sizeof(ext_len); ++i) {
+                payload_len = (payload_len << 8) | ext_len[i];
+            }
         }
         break;
         default:
