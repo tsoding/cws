@@ -265,9 +265,10 @@ error:
     return -1;
 }
 
-// TODO cws_send_frame() does not set Cws.error correctly
 int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
 {
+    cws->error = CWS_NO_ERROR;
+
     // Send FIN and OPCODE
     {
         // NOTE: FIN is always set
@@ -276,7 +277,8 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
             data |= (1 << 7);
         }
         if (cws->write(cws->socket, &data, 1) < 0) {
-            return -1;
+            cws->error = CWS_SOCKET_ERROR;
+            goto error;
         }
     }
 
@@ -288,21 +290,24 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
             uint8_t data = (1 << 7) | payload_len;
 
             if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                return -1;
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
             }
         } else if (payload_len <= UINT16_MAX) {
             uint8_t data = (1 << 7) | 126;
+            if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
+            }
+
             uint8_t len[2] = {
                 (payload_len >> (8 * 1)) & 0xFF,
                 (payload_len >> (8 * 0)) & 0xFF
             };
 
-            if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                return -1;
-            }
-
             if (cws->write(cws->socket, &len, sizeof(len)) <= 0) {
-                return -1;
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
             }
         } else if (payload_len > UINT16_MAX) {
             uint8_t data = (1 << 7) | 127;
@@ -318,11 +323,13 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
             };
 
             if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                return -1;
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
             }
 
             if (cws->write(cws->socket, &len, sizeof(len)) <= 0) {
-                return -1;
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
             }
         }
     }
@@ -336,9 +343,9 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
         }
 
         if (cws->write(cws->socket, mask, sizeof(mask)) <= 0) {
-            return -1;
+            cws->error = CWS_SOCKET_ERROR;
+            goto error;
         }
-
     }
 
     // Mask the payload and send it
@@ -353,12 +360,15 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
                 i += 1;
             }
             if (cws->write(cws->socket, chunk, chunk_size) <= 0) {
-                return -1;
+                cws->error = CWS_SOCKET_ERROR;
+                goto error;
             }
         }
     }
 
     return 0;
+error:
+    return -1;
 }
 
 void cws_free_frame(Cws *cws, Cws_Frame *frame)
