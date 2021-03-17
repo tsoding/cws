@@ -386,7 +386,7 @@ error:
 
 int cws_read_message(Cws *cws, Cws_Message *message)
 {
-    assert(message->chunks == NULL && "You forgot to cws_free_message() before calling cws_read_message()");
+    assert(message->chunks == NULL && "You forgot to call cws_free_message() before calling cws_read_message()");
 
     cws->error = CWS_NO_ERROR;
 
