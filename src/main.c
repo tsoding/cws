@@ -31,66 +31,6 @@ static_assert(sizeof(size_t) == sizeof(uint64_t),
 // #define SERVICE "80"
 #define SERVICE "443"
 
-char *slurp_file(const char *file_path)
-{
-    FILE *f = NULL;
-    char *buffer = NULL;
-
-    f = fopen(file_path, "r");
-    if (f == NULL) {
-        goto error;
-    }
-
-    if (fseek(f, 0, SEEK_END) < 0) {
-        goto error;
-    }
-
-    long m = ftell(f);
-    if (m < 0) {
-        goto error;
-    }
-
-    buffer = malloc((size_t) m + 1);
-    if (buffer == NULL) {
-        goto error;
-    }
-
-    if (fseek(f, 0, SEEK_SET) < 0) {
-        goto error;
-    }
-
-    fread(buffer, 1, (size_t) m, f);
-    if (ferror(f)) {
-        goto error;
-    }
-    buffer[m] = '\0';
-
-// ok:
-    fclose(f);
-
-    return buffer;
-
-error:
-    if (f) {
-        fclose(f);
-    }
-
-    if (buffer) {
-        free(buffer);
-    }
-
-    return NULL;
-}
-
-char *shift(int *argc, char ***argv)
-{
-    assert(*argc > 0);
-    char *result = **argv;
-    *argv += 1;
-    *argc -= 1;
-    return result;
-}
-
 #define RAW_LOG
 
 void log_frame(FILE *stream, Cws_Frame *frame)
