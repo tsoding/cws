@@ -1,5 +1,7 @@
 # C WebSockets
 
+**WARNING! The library is in an active development state and is not even alpha yet. Use it at your own risk. Nothing is documented, anything can be changed at any moment or stop working at all.**
+
 Custom WebSocket implementation in C for educational and recreational purposes.
 
 ## Quick Start
