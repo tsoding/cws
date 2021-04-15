@@ -63,12 +63,12 @@ void log_message(FILE *stream, Cws_Message message)
     printf("------------------------------\n");
 }
 
-ssize_t cws_ssl_read(void *socket, void *buf, size_t count)
+int cws_ssl_read(void *socket, void *buf, size_t count)
 {
     return SSL_read((SSL*) socket, buf, count);
 }
 
-ssize_t cws_ssl_write(void *socket, const void *buf, size_t count)
+int cws_ssl_write(void *socket, const void *buf, size_t count)
 {
     return SSL_write((SSL*) socket, buf, count);
 }

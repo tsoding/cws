@@ -83,8 +83,8 @@ typedef struct {
     Cws_Error error;
 
     Cws_Socket socket;
-    ssize_t (*read)(Cws_Socket socket, void *buf, size_t count);
-    ssize_t (*write)(Cws_Socket socket, const void *buf, size_t count);
+    int (*read)(Cws_Socket socket, void *buf, size_t count);
+    int (*write)(Cws_Socket socket, const void *buf, size_t count);
 
     Cws_Allocator ator;
     void *(*alloc)(Cws_Allocator ator, size_t size);
@@ -131,7 +131,7 @@ int cws_client_handshake(Cws *cws, const char *host)
     // 2. Nothing is sent after the handshake so we can distinguish the frames
     // 3. The handshake fits into sizeof(buffer)
     char buffer[1024];
-    ssize_t buffer_size = cws->read(cws->socket, buffer, sizeof(buffer));
+    int buffer_size = cws->read(cws->socket, buffer, sizeof(buffer));
     fwrite(buffer, 1, buffer_size, stdout);
     printf("------------------------------\n");
     if (buffer_size < 2 ||
