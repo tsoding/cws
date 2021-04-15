@@ -106,6 +106,11 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
 int cws_read_frame(Cws *cws, Cws_Frame *frame);
 void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
+#ifndef CWS_NOSTDLIB
+int cws_ssl_read(void *socket, void *buf, size_t count);
+int cws_ssl_write(void *socket, const void *buf, size_t count);
+#endif // CWS_NOSTDLIB
+
 #endif // CWS_H_
 
 #ifdef CWS_IMPLEMENTATION
@@ -536,6 +541,21 @@ void cws_free_message(Cws *cws, Cws_Message *message)
 
     message->chunks = NULL;
 }
+
+#ifndef CWS_NOSTDLIB
+void *cws_malloc(void *ator, size_t size)
+{
+    (void) ator;
+    return malloc(size);
+}
+
+void cws_free(void *ator, void *data, size_t size)
+{
+    (void) ator;
+    (void) size;
+    free(data);
+}
+#endif // CWS_NOSTDLIB
 
 #endif // CWS_IMPLEMENTATION
 // TODO: Test with Autobahn test suite

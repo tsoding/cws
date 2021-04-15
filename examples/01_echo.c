@@ -73,19 +73,6 @@ int cws_ssl_write(void *socket, const void *buf, size_t count)
     return SSL_write((SSL*) socket, buf, count);
 }
 
-void *cws_malloc(void *ator, size_t size)
-{
-    (void) ator;
-    return malloc(size);
-}
-
-void cws_free(void *ator, void *data, size_t size)
-{
-    (void) ator;
-    (void) size;
-    free(data);
-}
-
 int main(void)
 {
     // Resources to destroy at the end of the function
