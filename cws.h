@@ -108,10 +108,8 @@ void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
 const char *cws_get_error_string(Cws *cws);
 
-#ifndef CWS_NOSTDLIB
 int cws_ssl_read(void *socket, void *buf, size_t count);
 int cws_ssl_write(void *socket, const void *buf, size_t count);
-#endif // CWS_NOSTDLIB
 
 #endif // CWS_H_
 
@@ -123,7 +121,6 @@ int cws_client_handshake(Cws *cws, const char *host)
 
     char handshake[1024] = {0};
 
-    // TODO: Get rid of snprintf dependency for better CWS_NOSTDLIB support
     snprintf(handshake, sizeof(handshake),
              // TODO: customizable resource path
              "GET / HTTP/1.1\r\n"
@@ -562,7 +559,6 @@ const char *cws_get_error_string(Cws *cws)
     }
 }
 
-#ifndef CWS_NOSTDLIB
 void *cws_malloc(void *ator, size_t size)
 {
     (void) ator;
@@ -575,7 +571,6 @@ void cws_free(void *ator, void *data, size_t size)
     (void) size;
     free(data);
 }
-#endif // CWS_NOSTDLIB
 
 #endif // CWS_IMPLEMENTATION
 // TODO: Test with Autobahn test suite
