@@ -121,6 +121,7 @@ int cws_client_handshake(Cws *cws, const char *host)
 
     char handshake[1024] = {0};
 
+    // TODO: Get rid of snprintf dependency for better CWS_NOSTDLIB support
     snprintf(handshake, sizeof(handshake),
              // TODO: customizable resource path
              "GET / HTTP/1.1\r\n"
@@ -142,8 +143,6 @@ int cws_client_handshake(Cws *cws, const char *host)
     // 3. The handshake fits into sizeof(buffer)
     char buffer[1024];
     int buffer_size = cws->read(cws->socket, buffer, sizeof(buffer));
-    fwrite(buffer, 1, buffer_size, stdout);
-    printf("------------------------------\n");
     if (buffer_size < 2 ||
             buffer[buffer_size - 2] != '\r' ||
             buffer[buffer_size - 1] != '\n') {
