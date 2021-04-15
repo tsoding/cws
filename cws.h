@@ -78,17 +78,22 @@ typedef enum {
 
 typedef void* Cws_Socket;
 typedef void* Cws_Allocator;
+typedef int (*Cws_Read)(Cws_Socket socket, void *buf, size_t count);
+typedef int (*Cws_Write)(Cws_Socket socket, const void *buf, size_t count);
+typedef void *(*Cws_Alloc)(Cws_Allocator ator, size_t size);
+typedef void (*Cws_Free)(Cws_Allocator ator, void *data, size_t size);
+
 
 typedef struct {
     Cws_Error error;
 
     Cws_Socket socket;
-    int (*read)(Cws_Socket socket, void *buf, size_t count);
-    int (*write)(Cws_Socket socket, const void *buf, size_t count);
+    Cws_Read read;
+    Cws_Write write;
 
     Cws_Allocator ator;
-    void *(*alloc)(Cws_Allocator ator, size_t size);
-    void (*free)(Cws_Allocator ator, void *data, size_t size);
+    Cws_Alloc alloc;
+    Cws_Free free;
 } Cws;
 
 int cws_client_handshake(Cws *cws, const char *host);
