@@ -106,6 +106,8 @@ int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload
 int cws_read_frame(Cws *cws, Cws_Frame *frame);
 void cws_free_frame(Cws *cws, Cws_Frame *frame);
 
+const char *cws_get_error_string(Cws *cws);
+
 #ifndef CWS_NOSTDLIB
 int cws_ssl_read(void *socket, void *buf, size_t count);
 int cws_ssl_write(void *socket, const void *buf, size_t count);
@@ -539,6 +541,25 @@ void cws_free_message(Cws *cws, Cws_Message *message)
     }
 
     message->chunks = NULL;
+}
+
+const char *cws_get_error_string(Cws *cws)
+{
+    switch (cws->error) {
+    case CWS_NO_ERROR:
+        return "No error has happen. The developer of the application screwed up.";
+    case CWS_CLIENT_HANDSHAKE_ERROR:
+        return "Client WebSocket handshake has failed.";
+    case CWS_SOCKET_ERROR:
+        return "Socket read/write error.";
+    case CWS_ALLOCATOR_ERROR:
+        return "Out of memory";
+    case CWS_SERVER_CLOSE_ERROR:
+        return "Server closed connection";
+    default:
+        assert(0 && "Unreachable");
+        return NULL;
+    }
 }
 
 #ifndef CWS_NOSTDLIB

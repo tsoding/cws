@@ -158,7 +158,7 @@ int main(void)
 
     // WebSocket handshake with the server
     if (cws_client_handshake(&cws, HOST) < 0) {
-        fprintf(stderr, "ERROR: Server response is sus ngl\n");
+        fprintf(stderr, "ERROR: Server response is sus ngl: %s\n", cws_get_error_string(&cws));
         goto error;
     }
 
