@@ -1,26 +1,53 @@
-// Copyright 2021 Alexey Kutepov <reximkut@gmail.com>
-//
-// Permission is hereby granted, free of charge, to any person obtaining
-// a copy of this software and associated documentation files (the
-// "Software"), to deal in the Software without restriction, including
-// without limitation the rights to use, copy, modify, merge, publish,
-// distribute, sublicense, and/or sell copies of the Software, and to
-// permit persons to whom the Software is furnished to do so, subject to
-// the following conditions:
-//
-// The above copyright notice and this permission notice shall be
-// included in all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
 #ifndef CWS_H_
 #define CWS_H_
+
+#include <stdlib.h>
+#include <stdbool.h>
+#include "arena.h"
+
+typedef enum {
+    CWS_SHUTDOWN_READ,
+    CWS_SHUTDOWN_WRITE,
+    CWS_SHUTDOWN_BOTH,
+} Cws_Shutdown_How;
+
+// The errors are returned as negative values from cws_* functions
+typedef enum {
+    CWS_OK                                =  0,
+    CWS_ERROR_CONNECTION_CLOSED           = -1,
+    CWS_CONTROL_FRAME_TOO_BIG             = -2,
+    CWS_RESERVED_BITS_NOT_NEGOTIATED      = -3,
+    CWS_CLOSE_FRAME_SENT                  = -4,
+    CWS_UNEXPECTED_OPCODE                 = -5,
+    CWS_SHORT_UTF8                        = -6,
+    CWS_INVALID_UTF8                      = -7,
+    CWS_SERVER_HANDSHAKE_DUPLICATE_KEY    = -8,
+    CWS_SERVER_HANDSHAKE_NO_KEY           = -9,
+    CWS_CLIENT_HANDSHAKE_BAD_ACCEPT       = -10,
+    CWS_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT = -11,
+    CWS_CLIENT_HANDSHAKE_NO_ACCEPT        = -12,
+    CWS_ERRNO                             = -13, // TODO: set CWS_ERRNO to -1
+    CWS_SSL_ERROR                         = -14,
+} Cws_Error;
+
+// NOTE: read, write, and peek must never return 0. On internally returning 0 they must return CWS_ERROR_CONNECTION_CLOSED
+typedef struct {
+    void *data;
+    int (*read)(void *data, void *buffer, size_t len);
+    // peek: like read, but does not remove data from the buffer
+    // Usually implemented via MSG_PEEK flag of recv
+    int (*peek)(void *data, void *buffer, size_t len);
+    int (*write)(void *data, const void *buffer, size_t len);
+    int (*shutdown)(void *data, Cws_Shutdown_How how);
+    int (*close)(void *data);
+} Cws_Socket;
+
+typedef struct {
+    Cws_Socket socket;
+    Arena arena;
+    bool debug; // Enable debug logging
+    bool client;
+} Cws;
 
 typedef enum {
     CWS_OPCODE_CONT  = 0x0,
@@ -31,547 +58,35 @@ typedef enum {
     CWS_OPCODE_PONG  = 0xA,
 } Cws_Opcode;
 
-typedef struct {
-    char cstr[16];
-} Cws_Opcode_Name;
-
-Cws_Opcode_Name opcode_name(Cws_Opcode opcode);
-bool is_control(Cws_Opcode opcode);
-
-typedef struct {
-    bool fin;
-    Cws_Opcode opcode;
-    uint64_t payload_len;
-    uint8_t *payload;
-} Cws_Frame;
-
-typedef struct Cws_Message_Chunk Cws_Message_Chunk;
-
 typedef enum {
     CWS_MESSAGE_TEXT = CWS_OPCODE_TEXT,
-    CWS_MESSAGE_BIN = CWS_OPCODE_BIN,
+    CWS_MESSAGE_BIN  = CWS_OPCODE_BIN,
 } Cws_Message_Kind;
 
 typedef struct {
-    Cws_Message_Kind kind;
-    Cws_Message_Chunk *chunks;
-} Cws_Message;
-
-struct Cws_Message_Chunk {
-    Cws_Message_Chunk *next;
-    uint64_t payload_len;
-    uint8_t *payload;
-};
-
-typedef enum {
-    // No error has occurred
-    CWS_NO_ERROR = 0,
-    // cws_client_handshake() has failed
-    CWS_CLIENT_HANDSHAKE_ERROR,
-    // Cws.read or Cws.write have failed
-    CWS_SOCKET_ERROR,
-    // Cws.alloc has failed
-    CWS_ALLOCATOR_ERROR,
-    // Server sent CLOSE frame during cws_read_message()
-    CWS_SERVER_CLOSE_ERROR,
-} Cws_Error;
-
-typedef void* Cws_Socket;
-typedef void* Cws_Allocator;
-typedef int (*Cws_Read)(Cws_Socket socket, void *buf, size_t count);
-typedef int (*Cws_Write)(Cws_Socket socket, const void *buf, size_t count);
-typedef void *(*Cws_Alloc)(Cws_Allocator ator, size_t size);
-typedef void (*Cws_Free)(Cws_Allocator ator, void *data, size_t size);
-
+    bool fin, rsv1, rsv2, rsv3;
+    Cws_Opcode opcode;
+    bool masked;
+    size_t payload_len;
+    uint8_t mask[4];
+} Cws_Frame_Header;
 
 typedef struct {
-    Cws_Error error;
+    Cws_Message_Kind kind;
+    unsigned char *payload;
+    size_t payload_len;
+} Cws_Message;
 
-    Cws_Socket socket;
-    Cws_Read read;
-    Cws_Write write;
-
-    Cws_Allocator ator;
-    Cws_Alloc alloc;
-    Cws_Free free;
-} Cws;
-
-int cws_client_handshake(Cws *cws, const char *host);
-
-int cws_send_message(Cws *cws, Cws_Message_Kind kind, const uint8_t *payload, uint64_t payload_len, uint64_t chunk_len);
+const char *cws_opcode_name(Cws *cws, Cws_Opcode opcode);
+bool cws_opcode_is_control(Cws_Opcode opcode);
+int cws_server_handshake(Cws *cws);
+int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
+int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
+int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);
+int cws_read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
+int cws_read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
+int cws_read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
 int cws_read_message(Cws *cws, Cws_Message *message);
-void cws_free_message(Cws *cws, Cws_Message *message);
-
-int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len);
-int cws_read_frame(Cws *cws, Cws_Frame *frame);
-void cws_free_frame(Cws *cws, Cws_Frame *frame);
-
-const char *cws_get_error_string(Cws *cws);
-
-int cws_ssl_read(void *socket, void *buf, size_t count);
-int cws_ssl_write(void *socket, const void *buf, size_t count);
+void cws_close(Cws *cws);
 
 #endif // CWS_H_
-
-#ifdef CWS_IMPLEMENTATION
-
-int cws_client_handshake(Cws *cws, const char *host)
-{
-    cws->error = CWS_NO_ERROR;
-
-    char handshake[1024] = {0};
-
-    snprintf(handshake, sizeof(handshake),
-             // TODO: customizable resource path
-             "GET / HTTP/1.1\r\n"
-             "Host: %s\r\n"
-             "Upgrade: websocket\r\n"
-             "Connection: Upgrade\r\n"
-             // TODO: custom WebSocket key
-             "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n"
-             "Sec-WebSocket-Version: 13\r\n"
-             "\r\n",
-             host);
-    const size_t handshake_size = strlen(handshake);
-    cws->write(cws->socket, handshake, handshake_size);
-
-    // TODO: the server handshake is literally ignored
-    // Right now we are making this assumptions:
-    // 1. The server sent the successful handshake
-    // 2. Nothing is sent after the handshake so we can distinguish the frames
-    // 3. The handshake fits into sizeof(buffer)
-    char buffer[1024];
-    int buffer_size = cws->read(cws->socket, buffer, sizeof(buffer));
-    if (buffer_size < 2 ||
-            buffer[buffer_size - 2] != '\r' ||
-            buffer[buffer_size - 1] != '\n') {
-        cws->error = CWS_CLIENT_HANDSHAKE_ERROR;
-        goto error;
-    }
-    return 0;
-error:
-    return -1;
-}
-
-
-bool is_control(Cws_Opcode opcode)
-{
-    return 0x8 <= opcode && opcode <= 0xF;
-}
-
-Cws_Opcode_Name opcode_name(Cws_Opcode opcode)
-{
-    Cws_Opcode_Name result = {0};
-
-    switch (opcode) {
-    case CWS_OPCODE_CONT:
-        snprintf(result.cstr, sizeof(result.cstr), "CONT");
-        break;
-    case CWS_OPCODE_TEXT:
-        snprintf(result.cstr, sizeof(result.cstr), "TEXT");
-        break;
-    case CWS_OPCODE_BIN:
-        snprintf(result.cstr, sizeof(result.cstr), "BIN");
-        break;
-    case CWS_OPCODE_CLOSE:
-        snprintf(result.cstr, sizeof(result.cstr), "CLOSE");
-        break;
-    case CWS_OPCODE_PING:
-        snprintf(result.cstr, sizeof(result.cstr), "PING");
-        break;
-    case CWS_OPCODE_PONG:
-        snprintf(result.cstr, sizeof(result.cstr), "PONG");
-        break;
-    default:
-        if (0x3 <= opcode && opcode <= 0x7) {
-            snprintf(result.cstr, sizeof(result.cstr), "NONCONTROL(0x%X)", opcode & 0xF);
-        } else if (0xB <= opcode && opcode <= 0xF) {
-            snprintf(result.cstr, sizeof(result.cstr), "CONTROL(0x%X)", opcode & 0xF);
-        } else {
-            snprintf(result.cstr, sizeof(result.cstr), "INVALID(0x%X)", opcode & 0xF);
-        }
-    }
-
-    return result;
-}
-
-int cws_read_frame(Cws *cws, Cws_Frame *frame)
-{
-    assert(frame->payload == NULL && "You forgot to call cws_free_frame() before calling cws_read_frame()");
-
-    cws->error = CWS_NO_ERROR;
-
-#define FIN(header)         ((header)[0] >> 7)
-#define OPCODE(header)      ((header)[0] & 0xF)
-#define MASK(header)        ((header)[1] >> 7)
-#define PAYLOAD_LEN(header) ((header)[1] & 0x7F)
-
-    uint8_t header[2] = {0};
-
-    // Read the header
-    if (cws->read(cws->socket, header, sizeof(header)) <= 0) {
-        cws->error = CWS_SOCKET_ERROR;
-        goto error;
-    }
-
-    uint64_t payload_len = 0;
-
-    // Parse the payload length
-    {
-        // TODO: do we need to reverse the bytes on a machine with a different endianess than x86?
-        uint8_t len = PAYLOAD_LEN(header);
-        switch (len) {
-        case 126: {
-            uint8_t ext_len[2] = {0};
-            if (cws->read(cws->socket, &ext_len, sizeof(ext_len)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-
-            for (size_t i = 0; i < sizeof(ext_len); ++i) {
-                payload_len = (payload_len << 8) | ext_len[i];
-            }
-        }
-        break;
-        case 127: {
-            uint8_t ext_len[8] = {0};
-            if (cws->read(cws->socket, &ext_len, sizeof(ext_len)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-
-            for (size_t i = 0; i < sizeof(ext_len); ++i) {
-                payload_len = (payload_len << 8) | ext_len[i];
-            }
-        }
-        break;
-        default:
-            payload_len = len;
-        }
-    }
-
-    // Read the mask
-    // TODO: the server may not send masked frames
-    {
-        uint32_t mask = 0;
-        bool masked = MASK(header);
-
-        if (masked) {
-            if (cws->read(cws->socket, &mask, sizeof(mask)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        }
-    }
-
-    // Read the payload
-    {
-        frame->fin = FIN(header);
-        frame->opcode = OPCODE(header);
-        frame->payload_len = payload_len;
-
-        if (frame->payload_len > 0) {
-            frame->payload = cws->alloc(cws->ator, payload_len);
-            if (frame->payload == NULL) {
-                cws->error = CWS_ALLOCATOR_ERROR;
-                goto error;
-            }
-            memset(frame->payload, 0, payload_len);
-
-            // TODO: cws_read_frame does not handle when cws->read didn't read the whole payload
-            if (cws->read(cws->socket, frame->payload, frame->payload_len) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        }
-    }
-
-    return 0;
-error:
-    if (frame) {
-        cws_free_frame(cws, frame);
-    }
-    return -1;
-}
-
-int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, const uint8_t *payload, uint64_t payload_len)
-{
-    cws->error = CWS_NO_ERROR;
-
-    // Send FIN and OPCODE
-    {
-        // NOTE: FIN is always set
-        uint8_t data = opcode;
-        if (fin) {
-            data |= (1 << 7);
-        }
-        if (cws->write(cws->socket, &data, 1) < 0) {
-            cws->error = CWS_SOCKET_ERROR;
-            goto error;
-        }
-    }
-
-    // Send masked and payload length
-    {
-        // TODO: do we need to reverse the bytes on a machine with a different endianess than x86?
-        // NOTE: client frames are always masked
-        if (payload_len < 126) {
-            uint8_t data = (1 << 7) | payload_len;
-
-            if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        } else if (payload_len <= UINT16_MAX) {
-            uint8_t data = (1 << 7) | 126;
-            if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-
-            uint8_t len[2] = {
-                (payload_len >> (8 * 1)) & 0xFF,
-                (payload_len >> (8 * 0)) & 0xFF
-            };
-
-            if (cws->write(cws->socket, &len, sizeof(len)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        } else if (payload_len > UINT16_MAX) {
-            uint8_t data = (1 << 7) | 127;
-            uint8_t len[8] = {
-                (payload_len >> (8 * 7)) & 0xFF,
-                (payload_len >> (8 * 6)) & 0xFF,
-                (payload_len >> (8 * 5)) & 0xFF,
-                (payload_len >> (8 * 4)) & 0xFF,
-                (payload_len >> (8 * 3)) & 0xFF,
-                (payload_len >> (8 * 2)) & 0xFF,
-                (payload_len >> (8 * 1)) & 0xFF,
-                (payload_len >> (8 * 0)) & 0xFF
-            };
-
-            if (cws->write(cws->socket, &data, sizeof(data)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-
-            if (cws->write(cws->socket, &len, sizeof(len)) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        }
-    }
-
-    uint8_t mask[4] = {0};
-
-    // Generate and send mask
-    {
-        for (size_t i = 0; i < 4; ++i) {
-            mask[i] = rand() % 0x100;
-        }
-
-        if (cws->write(cws->socket, mask, sizeof(mask)) <= 0) {
-            cws->error = CWS_SOCKET_ERROR;
-            goto error;
-        }
-    }
-
-    // Mask the payload and send it
-    {
-        uint64_t i = 0;
-        while (i < payload_len) {
-            uint8_t chunk[1024];
-            uint64_t chunk_size = 0;
-            while (i < payload_len && chunk_size < sizeof(chunk)) {
-                chunk[chunk_size] = payload[i] ^ mask[i % 4];
-                chunk_size += 1;
-                i += 1;
-            }
-            if (cws->write(cws->socket, chunk, chunk_size) <= 0) {
-                cws->error = CWS_SOCKET_ERROR;
-                goto error;
-            }
-        }
-    }
-
-    return 0;
-error:
-    return -1;
-}
-
-void cws_free_frame(Cws *cws, Cws_Frame *frame)
-{
-    cws->free(cws->ator, frame->payload, frame->payload_len);
-    frame->payload = NULL;
-}
-
-int cws_send_message(Cws *cws,
-                     Cws_Message_Kind kind,
-                     const uint8_t *payload,
-                     uint64_t payload_len,
-                     uint64_t chunk_len)
-{
-    cws->error = CWS_NO_ERROR;
-
-    bool first = true;
-    while (payload_len > 0) {
-        uint64_t len = payload_len;
-        if (len > chunk_len) {
-            len = chunk_len;
-        }
-
-        if (cws_send_frame(
-                    cws,
-                    payload_len - len == 0,
-                    first ? (Cws_Opcode) kind : CWS_OPCODE_CONT,
-                    payload,
-                    len) < 0) {
-            goto error;
-        }
-
-        payload += len;
-        payload_len -= len;
-        first = false;
-    }
-
-    return 0;
-error:
-    return -1;
-}
-
-int cws_read_message(Cws *cws, Cws_Message *message)
-{
-    assert(message->chunks == NULL && "You forgot to call cws_free_message() before calling cws_read_message()");
-
-    cws->error = CWS_NO_ERROR;
-
-    Cws_Message_Chunk *end = NULL;
-
-    Cws_Frame frame = {0};
-    int ret = cws_read_frame(cws, &frame);
-    while (ret == 0) {
-        if (is_control(frame.opcode)) {
-            switch (frame.opcode) {
-            case CWS_OPCODE_CLOSE: {
-                cws->error = CWS_SERVER_CLOSE_ERROR;
-                goto error;
-            }
-            break;
-            case CWS_OPCODE_PING:
-                if (cws_send_frame(
-                            cws,
-                            true,
-                            CWS_OPCODE_PONG,
-                            frame.payload,
-                            frame.payload_len) < 0) {
-                    goto error;
-                }
-                break;
-            default: {
-                // Ignore any other control frames for now
-            }
-            }
-
-            cws_free_frame(cws, &frame);
-        } else {
-            // TODO: cws_read_message does not verify that the message starts with non CONT frame (does it have to start with non-CONT frame)?
-            // TODO: cws_read_message does not verify that any non-fin "continuation" frames have the CONT opcode
-            if (end == NULL) {
-                end = cws->alloc(cws->ator, sizeof(*end));
-                if (end == NULL) {
-                    cws->error = CWS_ALLOCATOR_ERROR;
-                    goto error;
-                }
-                memset(end, 0, sizeof(*end));
-                end->payload = frame.payload;
-                end->payload_len = frame.payload_len;
-                message->chunks = end;
-                message->kind = (Cws_Message_Kind) frame.opcode;
-            } else {
-                end->next = cws->alloc(cws->ator, sizeof(*end->next));
-                if (end->next == NULL) {
-                    cws->error = CWS_ALLOCATOR_ERROR;
-                    goto error;
-                }
-                memset(end->next, 0, sizeof(*end->next));
-                end->next->payload = frame.payload;
-                end->next->payload_len = frame.payload_len;
-                end = end->next;
-            }
-
-            // The frame's payload has been moved to the message chunk (moved as in C++ moved,
-            // the ownership of the payload belongs to message now)
-            frame.payload = NULL;
-            frame.payload_len = 0;
-
-            if (frame.fin) {
-                break;
-            }
-        }
-
-        ret = cws_read_frame(cws, &frame);
-    }
-
-    if (ret < 0) {
-        goto error;
-    }
-
-    return 0;
-error:
-    cws_free_message(cws, message);
-    if (frame.payload) {
-        cws_free_frame(cws, &frame);
-    }
-    return -1;
-}
-
-void cws_free_message(Cws *cws, Cws_Message *message)
-{
-    Cws_Message_Chunk *iter = message->chunks;
-    while (iter != NULL) {
-        cws->free(cws->ator, iter->payload, iter->payload_len);
-
-        Cws_Message_Chunk *remove = iter;
-        iter = iter->next;
-        cws->free(cws->ator, remove, sizeof(*remove));
-    }
-
-    message->chunks = NULL;
-}
-
-const char *cws_get_error_string(Cws *cws)
-{
-    switch (cws->error) {
-    case CWS_NO_ERROR:
-        return "No error has happen. The developer of the application screwed up.";
-    case CWS_CLIENT_HANDSHAKE_ERROR:
-        return "Client WebSocket handshake has failed.";
-    case CWS_SOCKET_ERROR:
-        return "Socket read/write error.";
-    case CWS_ALLOCATOR_ERROR:
-        return "Out of memory";
-    case CWS_SERVER_CLOSE_ERROR:
-        return "Server closed connection";
-    default:
-        assert(0 && "Unreachable");
-        return NULL;
-    }
-}
-
-void *cws_malloc(void *ator, size_t size)
-{
-    (void) ator;
-    return malloc(size);
-}
-
-void cws_free(void *ator, void *data, size_t size)
-{
-    (void) ator;
-    (void) size;
-    free(data);
-}
-
-#endif // CWS_IMPLEMENTATION
-// TODO: Test with Autobahn test suite
-// https://crossbar.io/docs/WebSocket-Compliance-Testing/
