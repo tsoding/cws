@@ -4,8 +4,9 @@
 
 #define BUILD_FOLDER "build/"
 #define EXAMPLES_FOLDER "examples/"
+#define SRC_FOLDER "src/"
 
-#define cc_with_cflags(cmd) cmd_append(cmd, "gcc", "-Wall", "-Wextra", "-ggdb", "-I.")
+#define cc_with_cflags(cmd) cmd_append(cmd, "gcc", "-Wall", "-Wextra", "-ggdb", "-I.", "-I"SRC_FOLDER)
 #define cc_output(cmd, output_path) cmd_append(cmd, "-o", output_path)
 #define cc_no_link(cmd) cmd_append(cmd, "-c")
 #define cc_input(cmd, ...) cmd_append(cmd, __VA_ARGS__)
@@ -21,13 +22,13 @@ int main(int argc, char **argv)
     cc_with_cflags(&cmd);
     cc_no_link(&cmd);
     cc_output(&cmd, BUILD_FOLDER"cws.o");
-    cc_input(&cmd, "cws.c");
+    cc_input(&cmd, SRC_FOLDER"cws.c");
     da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
 
     cc_with_cflags(&cmd);
     cc_no_link(&cmd);
     cc_output(&cmd, BUILD_FOLDER"coroutine.o");
-    cc_input(&cmd, "coroutine.c");
+    cc_input(&cmd, SRC_FOLDER"coroutine.c");
     da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
 
     if (!nob_procs_wait_and_reset(&procs)) return 1;
