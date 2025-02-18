@@ -73,7 +73,6 @@ const char *cws_opcode_name(Cws *cws, Cws_Opcode opcode);
 bool cws_opcode_is_control(Cws_Opcode opcode);
 int cws_server_handshake(Cws *cws);
 int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
-int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);
 int cws_read_message(Cws *cws, Cws_Message *message);
 void cws_close(Cws *cws);

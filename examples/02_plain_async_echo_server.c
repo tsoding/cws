@@ -104,8 +104,6 @@ void echo_client(void *data)
                 printf("ERROR: client connection failed: %d\n", err);
             }
 
-            // TODO: tuck sending closing frame under cws_close()
-            cws_send_frame(&cws, true, CWS_OPCODE_CLOSE, NULL, 0);
             cws_close(&cws);
             break;
         }

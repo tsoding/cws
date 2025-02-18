@@ -32,6 +32,8 @@ typedef struct {
 #define CWS_MASK(header)        ((header)[1] >> 7);
 #define CWS_PAYLOAD_LEN(header) ((header)[1] & 0x7F);
 
+// `cws__` with double underscore means that the function is private
+// TODO: make all the private functions static
 int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t len);
 int cws__socket_write_entire_buffer_raw(Cws_Socket socket, const void *buffer, size_t len);
 int cws__parse_sec_websocket_key_from_request(String_View *request, String_View *sec_websocket_key);
@@ -42,10 +44,12 @@ void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t p
 int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
 int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
 int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
+int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
 
 void cws_close(Cws *cws)
 {
     // Ignoring any errors of socket operations because we are closing the connection anyway
+    cws__send_frame(cws, true, CWS_OPCODE_CLOSE, NULL, 0);
 
     // Base on the ideas from https://blog.netherlabs.nl/articles/2009/01/18/the-ultimate-so_linger-page-or-why-is-my-tcp-not-reliable
     // Informing the OS that we are not planning to send anything anymore
@@ -179,7 +183,7 @@ int cws__parse_sec_websocket_accept_from_response(String_View *response, String_
     return 0;
 }
 
-int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len)
+int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len)
 {
     int ret;
 
@@ -283,7 +287,7 @@ int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, si
         bool fin = payload_len - len == 0;
         Cws_Opcode opcode = first ? (Cws_Opcode) kind : CWS_OPCODE_CONT;
 
-        int ret = cws_send_frame(cws, fin, opcode, payload, len);
+        int ret = cws__send_frame(cws, fin, opcode, payload, len);
         if (ret < 0) return ret;
 
         payload += len;
@@ -451,7 +455,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             case CWS_OPCODE_PING:
                 ret = cws__read_frame_entire_payload(cws, frame, &payload, &payload_len);
                 if (ret < 0) return ret;
-                ret = cws_send_frame(cws, true, CWS_OPCODE_PONG, payload, payload_len);
+                ret = cws__send_frame(cws, true, CWS_OPCODE_PONG, payload, payload_len);
                 if (ret < 0) return ret;
                 break;
             case CWS_OPCODE_PONG:
