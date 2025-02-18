@@ -8,7 +8,6 @@
 #include <unistd.h>
 
 #include "cws.h"
-#include "coroutine.h"
 
 #define HOST_IP "127.0.0.1"
 #define PORT 9001
@@ -65,8 +64,6 @@ Cws_Socket cws_socket_from_fd(int fd)
 
 int main(void)
 {
-    coroutine_init();
-
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         fprintf(stderr, "ERROR: could not create server socket: %s\n", strerror(errno));
