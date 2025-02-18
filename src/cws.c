@@ -45,20 +45,19 @@ typedef struct {
 #define CWS_PAYLOAD_LEN(header) ((header)[1] & 0x7F);
 
 // `cws__` with double underscore means that the function is private
-// TODO: make all the private functions static
-int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t len);
-int cws__socket_write_entire_buffer_raw(Cws_Socket socket, const void *buffer, size_t len);
-int cws__parse_sec_websocket_key_from_request(String_View *request, String_View *sec_websocket_key);
-int cws__parse_sec_websocket_accept_from_response(String_View *response, String_View *sec_websocket_accept);
-const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_websocket_key);
-int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size);
-void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t pos);
-int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
-int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
-int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
-int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
-const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode);
-bool cws__opcode_is_control(Cws_Opcode opcode);
+static int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t len);
+static int cws__socket_write_entire_buffer_raw(Cws_Socket socket, const void *buffer, size_t len);
+static int cws__parse_sec_websocket_key_from_request(String_View *request, String_View *sec_websocket_key);
+static int cws__parse_sec_websocket_accept_from_response(String_View *response, String_View *sec_websocket_accept);
+static const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_websocket_key);
+static int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size);
+static void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t pos);
+static int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
+static int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
+static int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
+static int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
+static const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode);
+static bool cws__opcode_is_control(Cws_Opcode opcode);
 
 void cws_close(Cws *cws)
 {
@@ -84,7 +83,7 @@ void cws_close(Cws *cws)
     arena_free(&cws->arena);
 }
 
-int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t len) {
+static int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t len) {
     char *buf = buffer;
     while (len > 0) {
         int n = socket.read(socket.data, buf, len);
@@ -95,7 +94,7 @@ int cws__socket_read_entire_buffer_raw(Cws_Socket socket, void *buffer, size_t l
     return 0;
 }
 
-int cws__socket_write_entire_buffer_raw(Cws_Socket socket, const void *buffer, size_t len) {
+static int cws__socket_write_entire_buffer_raw(Cws_Socket socket, const void *buffer, size_t len) {
     const char *buf = buffer;
     while (len > 0) {
         int n = socket.write(socket.data, buf, len);
@@ -170,7 +169,7 @@ int cws_client_handshake(Cws *cws, const char *host, const char *endpoint)
     return 0;
 }
 
-int cws__parse_sec_websocket_accept_from_response(String_View *response, String_View *sec_websocket_accept)
+static int cws__parse_sec_websocket_accept_from_response(String_View *response, String_View *sec_websocket_accept)
 {
     bool found_sec_websocket_accept = false;
 
@@ -197,7 +196,7 @@ int cws__parse_sec_websocket_accept_from_response(String_View *response, String_
     return 0;
 }
 
-int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len)
+static int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len)
 {
     int ret;
 
@@ -317,7 +316,7 @@ const char *cws_message_kind_name(Cws *cws, Cws_Message_Kind kind)
     return cws__opcode_name(cws, (Cws_Opcode) kind);
 }
 
-const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode)
+static const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode)
 {
     switch (opcode) {
     case CWS_OPCODE_CONT:  return "CONT";
@@ -337,7 +336,7 @@ const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode)
     }
 }
 
-bool cws__opcode_is_control(Cws_Opcode opcode)
+static bool cws__opcode_is_control(Cws_Opcode opcode)
 {
     // TODO: cws__opcode_name uses range 0xB <= opcode && opcode <= 0xF. Is this a bug?
     // 0xB and 0x8 kind do look the similar. I need to check the specs on that
@@ -345,7 +344,7 @@ bool cws__opcode_is_control(Cws_Opcode opcode)
 }
 
 
-int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
+static int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
 {
     unsigned char header[2];
 
@@ -441,7 +440,7 @@ int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsig
     return n;
 }
 
-int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len)
+static int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len)
 {
     *payload_len = frame_header.payload_len;
     *payload = arena_alloc(&cws->arena, *payload_len);
@@ -542,7 +541,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
     return 0;
 }
 
-int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size)
+static int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size)
 {
     size_t max_size = *size;
     if (max_size < 1) return CWS_SHORT_UTF8;
@@ -609,7 +608,7 @@ int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size)
     return uc;
 }
 
-void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t pos)
+static void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t pos)
 {
     unsigned char c = payload->items[pos];
     size_t size = 0;
@@ -625,7 +624,7 @@ void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t p
     while (payload->count - pos < size) arena_da_append(&cws->arena, payload, 0x80);
 }
 
-int cws__parse_sec_websocket_key_from_request(String_View *request, String_View *sec_websocket_key)
+static int cws__parse_sec_websocket_key_from_request(String_View *request, String_View *sec_websocket_key)
 {
     bool found_sec_websocket_key = false;
 
@@ -651,7 +650,7 @@ int cws__parse_sec_websocket_key_from_request(String_View *request, String_View 
     return 0;
 }
 
-const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_websocket_key)
+static const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_websocket_key)
 {
     const char *src = arena_sprintf(&cws->arena, SV_Fmt"258EAFA5-E914-47DA-95CA-C5AB0DC85B11", SV_Arg(sec_websocket_key));
     SHA1 sha1 = {0};
