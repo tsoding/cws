@@ -50,17 +50,8 @@ typedef struct {
 } Cws;
 
 typedef enum {
-    CWS_OPCODE_CONT  = 0x0,
-    CWS_OPCODE_TEXT  = 0x1,
-    CWS_OPCODE_BIN   = 0x2,
-    CWS_OPCODE_CLOSE = 0x8,
-    CWS_OPCODE_PING  = 0x9,
-    CWS_OPCODE_PONG  = 0xA,
-} Cws_Opcode;
-
-typedef enum {
-    CWS_MESSAGE_TEXT = CWS_OPCODE_TEXT,
-    CWS_MESSAGE_BIN  = CWS_OPCODE_BIN,
+    CWS_MESSAGE_TEXT = 0x1,
+    CWS_MESSAGE_BIN  = 0x2,
 } Cws_Message_Kind;
 
 typedef struct {
@@ -69,8 +60,7 @@ typedef struct {
     size_t payload_len;
 } Cws_Message;
 
-const char *cws_opcode_name(Cws *cws, Cws_Opcode opcode);
-bool cws_opcode_is_control(Cws_Opcode opcode);
+const char *cws_message_kind_name(Cws *cws, Cws_Message_Kind kind);
 int cws_server_handshake(Cws *cws);
 int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);

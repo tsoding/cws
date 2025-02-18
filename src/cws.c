@@ -12,6 +12,18 @@ typedef struct {
     size_t capacity;
 } Cws_Payload_Buffer;
 
+typedef enum {
+    CWS_OPCODE_CONT  = 0x0,
+    CWS_OPCODE_TEXT  = 0x1,
+    CWS_OPCODE_BIN   = 0x2,
+    CWS_OPCODE_CLOSE = 0x8,
+    CWS_OPCODE_PING  = 0x9,
+    CWS_OPCODE_PONG  = 0xA,
+} Cws_Opcode;
+
+static_assert((int)CWS_OPCODE_TEXT == (int)CWS_MESSAGE_TEXT, "Discrepancy between Cws_Opcode and Cws_Message_Kind");
+static_assert((int)CWS_OPCODE_BIN == (int)CWS_MESSAGE_BIN, "Discrepancy between Cws_Opcode and Cws_Message_Kind");
+
 typedef struct {
     bool fin, rsv1, rsv2, rsv3;
     Cws_Opcode opcode;
@@ -45,6 +57,8 @@ int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
 int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
 int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
 int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
+const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode);
+bool cws__opcode_is_control(Cws_Opcode opcode);
 
 void cws_close(Cws *cws)
 {
@@ -190,7 +204,7 @@ int cws__send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payloa
     if (cws->debug) {
         printf("CWS DEBUG: TX FRAME: FIN(%d), OPCODE(%s), RSV(000), PAYLOAD_LEN: %zu\n",
                fin,
-               cws_opcode_name(cws, opcode),
+               cws__opcode_name(cws, opcode),
                payload_len);
     }
 
@@ -298,7 +312,12 @@ int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, si
     return 0;
 }
 
-const char *cws_opcode_name(Cws *cws, Cws_Opcode opcode)
+const char *cws_message_kind_name(Cws *cws, Cws_Message_Kind kind)
+{
+    return cws__opcode_name(cws, (Cws_Opcode) kind);
+}
+
+const char *cws__opcode_name(Cws *cws, Cws_Opcode opcode)
 {
     switch (opcode) {
     case CWS_OPCODE_CONT:  return "CONT";
@@ -318,9 +337,9 @@ const char *cws_opcode_name(Cws *cws, Cws_Opcode opcode)
     }
 }
 
-bool cws_opcode_is_control(Cws_Opcode opcode)
+bool cws__opcode_is_control(Cws_Opcode opcode)
 {
-    // TODO: cws_opcode_name uses range 0xB <= opcode && opcode <= 0xF. Is this a bug?
+    // TODO: cws__opcode_name uses range 0xB <= opcode && opcode <= 0xF. Is this a bug?
     // 0xB and 0x8 kind do look the similar. I need to check the specs on that
     return 0x8 <= opcode && opcode <= 0xF;
 }
@@ -371,7 +390,7 @@ int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
     if (cws->debug) {
         printf("CWS DEBUG: RX FRAME: FIN(%d), OPCODE(%s), MASKED(%d), RSV(%d%d%d), PAYLOAD_LEN: %zu\n",
                frame_header->fin,
-               cws_opcode_name(cws, frame_header->opcode),
+               cws__opcode_name(cws, frame_header->opcode),
                frame_header->masked,
                frame_header->rsv1, frame_header->rsv2, frame_header->rsv3,
                frame_header->payload_len);
@@ -380,7 +399,7 @@ int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
     // RFC 6455 - Section 5.5:
     // > All control frames MUST have a payload length of 125 bytes or less
     // > and MUST NOT be fragmented.
-    if (cws_opcode_is_control(frame_header->opcode) && (frame_header->payload_len > 125 || !frame_header->fin)) {
+    if (cws__opcode_is_control(frame_header->opcode) && (frame_header->payload_len > 125 || !frame_header->fin)) {
         return CWS_CONTROL_FRAME_TOO_BIG;
     }
 
@@ -446,7 +465,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
         Cws_Frame_Header frame = {0};
         int ret =  cws__read_frame_header(cws, &frame);
         if (ret < 0) return ret;
-        if (cws_opcode_is_control(frame.opcode)) {
+        if (cws__opcode_is_control(frame.opcode)) {
             unsigned char *payload;
             size_t payload_len;
             switch (frame.opcode) {

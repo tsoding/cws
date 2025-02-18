@@ -130,7 +130,7 @@ int main(void)
                 cws_close(&cws);
                 break;
             }
-            printf("INFO: %d: client sent %zu bytes of %s message\n", i, message.payload_len, cws_opcode_name(&cws, (Cws_Opcode)message.kind));
+            printf("INFO: %d: client sent %zu bytes of %s message\n", i, message.payload_len, cws_message_kind_name(&cws, message.kind));
             cws_send_message(&cws, message.kind, message.payload, message.payload_len);
             arena_reset(&cws.arena);
         }
