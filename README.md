@@ -10,7 +10,7 @@ Custom WebSocket implementation in C for educational and recreational purposes.
 ```console
 $ cc -o nob nob.c
 $ ./nob
-$ ./build/01_plain_echo_server
+$ ./build/02_plain_async_echo_server
 $ wstest --mode fuzzingclient
 ```
 
