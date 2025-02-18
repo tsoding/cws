@@ -64,14 +64,6 @@ typedef enum {
 } Cws_Message_Kind;
 
 typedef struct {
-    bool fin, rsv1, rsv2, rsv3;
-    Cws_Opcode opcode;
-    bool masked;
-    size_t payload_len;
-    uint8_t mask[4];
-} Cws_Frame_Header;
-
-typedef struct {
     Cws_Message_Kind kind;
     unsigned char *payload;
     size_t payload_len;
@@ -83,9 +75,6 @@ int cws_server_handshake(Cws *cws);
 int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
 int cws_send_frame(Cws *cws, bool fin, Cws_Opcode opcode, unsigned char *payload, size_t payload_len);
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);
-int cws_read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
-int cws_read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
-int cws_read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
 int cws_read_message(Cws *cws, Cws_Message *message);
 void cws_close(Cws *cws);
 

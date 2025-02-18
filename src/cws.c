@@ -12,9 +12,17 @@ typedef struct {
     size_t capacity;
 } Cws_Payload_Buffer;
 
-#define CHUNK_SIZE 1024
+typedef struct {
+    bool fin, rsv1, rsv2, rsv3;
+    Cws_Opcode opcode;
+    bool masked;
+    size_t payload_len;
+    uint8_t mask[4];
+} Cws_Frame_Header;
+
 // TODO: Make the CHUNK_SIZE customizable somehow
 // Maybe make it a runtime parameter of Cws, like the client flag.
+#define CHUNK_SIZE 1024
 
 #define CWS_FIN(header)         (((header)[0] >> 7)&0x1);
 #define CWS_RSV1(header)        (((header)[0] >> 6)&0x1);
@@ -31,6 +39,9 @@ int cws__parse_sec_websocket_accept_from_response(String_View *response, String_
 const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_websocket_key);
 int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size);
 void cws__extend_unfinished_utf8(Cws *cws, Cws_Payload_Buffer *payload, size_t pos);
+int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header);
+int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_capacity, size_t payload_size);
+int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len);
 
 void cws_close(Cws *cws)
 {
@@ -311,7 +322,7 @@ bool cws_opcode_is_control(Cws_Opcode opcode)
 }
 
 
-int cws_read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
+int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
 {
     unsigned char header[2];
 
@@ -390,7 +401,7 @@ int cws_read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
     return 0;
 }
 
-int cws_read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_len, size_t finished_payload_len)
+int cws__read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsigned char *payload, size_t payload_len, size_t finished_payload_len)
 {
     assert(frame_header.payload_len == payload_len);
     if (finished_payload_len >= payload_len) return 0;
@@ -407,13 +418,13 @@ int cws_read_frame_payload_chunk(Cws *cws, Cws_Frame_Header frame_header, unsign
     return n;
 }
 
-int cws_read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len)
+int cws__read_frame_entire_payload(Cws *cws, Cws_Frame_Header frame_header, unsigned char **payload, size_t *payload_len)
 {
     *payload_len = frame_header.payload_len;
     *payload = arena_alloc(&cws->arena, *payload_len);
     size_t finished_payload_len = 0;
     while (finished_payload_len < *payload_len) {
-        int ret = cws_read_frame_payload_chunk(cws, frame_header, *payload, *payload_len, finished_payload_len);
+        int ret = cws__read_frame_payload_chunk(cws, frame_header, *payload, *payload_len, finished_payload_len);
         if (ret < 0) return ret;
         size_t n = ret;
         finished_payload_len += n;
@@ -429,7 +440,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
 
     for (;;) {
         Cws_Frame_Header frame = {0};
-        int ret =  cws_read_frame_header(cws, &frame);
+        int ret =  cws__read_frame_header(cws, &frame);
         if (ret < 0) return ret;
         if (cws_opcode_is_control(frame.opcode)) {
             unsigned char *payload;
@@ -438,13 +449,13 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             case CWS_OPCODE_CLOSE:
                 return CWS_CLOSE_FRAME_SENT;
             case CWS_OPCODE_PING:
-                ret = cws_read_frame_entire_payload(cws, frame, &payload, &payload_len);
+                ret = cws__read_frame_entire_payload(cws, frame, &payload, &payload_len);
                 if (ret < 0) return ret;
                 ret = cws_send_frame(cws, true, CWS_OPCODE_PONG, payload, payload_len);
                 if (ret < 0) return ret;
                 break;
             case CWS_OPCODE_PONG:
-                ret = cws_read_frame_entire_payload(cws, frame, &payload, &payload_len);
+                ret = cws__read_frame_entire_payload(cws, frame, &payload, &payload_len);
                 if (ret < 0) return ret;
                 // Unsolicited PONGs are just ignored
                 break;
@@ -471,7 +482,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             unsigned char* frame_payload = arena_alloc(&cws->arena, frame_payload_len);
             size_t frame_finished_payload_len = 0;
             while (frame_finished_payload_len < frame_payload_len) {
-                int ret = cws_read_frame_payload_chunk(cws, frame, frame_payload, frame_payload_len, frame_finished_payload_len);
+                int ret = cws__read_frame_payload_chunk(cws, frame, frame_payload, frame_payload_len, frame_finished_payload_len);
                 if (ret < 0) return ret;
                 size_t n = ret;
                 arena_sb_append_buf(&cws->arena, &payload, frame_payload + frame_finished_payload_len, n);
