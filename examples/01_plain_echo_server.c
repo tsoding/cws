@@ -117,7 +117,7 @@ int main(void)
         }
 
         printf("INFO: client connected\n");
-        while (true) {
+        for (int i = 0; ; ++i) {
             Cws_Message message = {0};
             err = cws_read_message(&cws, &message);
             if (err < 0) {
@@ -131,7 +131,7 @@ int main(void)
                 cws_close(&cws);
                 break;
             }
-            printf("INFO: client sent %zu bytes of %s message\n", message.payload_len, cws_opcode_name(&cws, (Cws_Opcode)message.kind));
+            printf("INFO: %d: client sent %zu bytes of %s message\n", i, message.payload_len, cws_opcode_name(&cws, (Cws_Opcode)message.kind));
             cws_send_message(&cws, message.kind, message.payload, message.payload_len);
             arena_reset(&cws.arena);
         }
