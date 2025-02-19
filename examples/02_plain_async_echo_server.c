@@ -128,10 +128,6 @@ int main(void)
         fprintf(stderr, "ERROR: could not configure server socket: %s\n", strerror(errno));
         return 1;
     }
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
-        fprintf(stderr, "ERROR: could not configure server socket: %s\n", strerror(errno));
-        return 1;
-    }
 
     struct sockaddr_in server_addr = {0};
     server_addr.sin_family = AF_INET;
