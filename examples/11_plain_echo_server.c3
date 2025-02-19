@@ -9,7 +9,7 @@ import arena;
 fn int cws_socket_read(void* data, void* buffer, usz len)
 {
     isz n = libc::read((int)(iptr)data, buffer, len);
-    if (n < 0) return (int)cws::ERRNO;
+    if (n < 0) return (int)cws::ERROR_ERRNO;
     if (n == 0) return (int)cws::ERROR_CONNECTION_CLOSED;
     return (int)n;
 }
@@ -20,7 +20,7 @@ fn int cws_socket_peek(void* data, void* buffer, usz len)
 {
     const int MSG_PEEK = 2;
     isz n = libc::recv((int)(iptr)data, buffer, len, MSG_PEEK);
-    if (n < 0)  return (int)cws::ERRNO;
+    if (n < 0)  return (int)cws::ERROR_ERRNO;
     if (n == 0) return (int)cws::ERROR_CONNECTION_CLOSED;
     return (int)n;
 }
@@ -28,20 +28,20 @@ fn int cws_socket_peek(void* data, void* buffer, usz len)
 fn int cws_socket_write(void* data, void* buffer, usz len)
 {
     isz n = libc::write((int)(iptr)data, buffer, len);
-    if (n < 0)  return (int)cws::ERRNO;
+    if (n < 0)  return (int)cws::ERROR_ERRNO;
     if (n == 0) return (int)cws::ERROR_CONNECTION_CLOSED;
     return (int)n;
 }
 
 fn int cws_socket_shutdown(void* data, CwsShutdownHow how)
 {
-    if (libc::shutdown((int)(iptr)data, (int)how) < 0) return (int)cws::ERRNO;
+    if (libc::shutdown((int)(iptr)data, (int)how) < 0) return (int)cws::ERROR_ERRNO;
     return 0;
 }
 
 fn int cws_socket_close(void *data)
 {
-    if (libc::close((int)(iptr)data) < 0) return (int)cws::ERRNO;
+    if (libc::close((int)(iptr)data) < 0) return (int)cws::ERROR_ERRNO;
     return 0;
 }
 
@@ -69,10 +69,11 @@ fn int main() {
             .socket = cws_socket_from_fd(client.sock),
             .debug = true,
         };
+        defer arena::free(&cws.arena);
 
         int err = cws::server_handshake(&cws);
         if (err < 0) {
-            io::eprintf("CWS ERROR: server_handshake: %d\n", err);
+            io::eprintf("ERROR: server_handshake: %s\n", cws::error_message(&cws, (CwsError)err));
             return 1;
         }
 
@@ -81,10 +82,10 @@ fn int main() {
             CwsMessage message;
             err = cws::read_message(&cws, &message);
             if (err < 0) {
-                if (err == (int)cws::CLOSE_FRAME_SENT) {
+                if (err == (int)cws::ERROR_FRAME_CLOSE_SENT) {
                     io::printf("INFO: client closed connection\n");
                 } else {
-                    io::eprintf("ERROR: client connection failed: %d\n", err);
+                    io::eprintf("ERROR: client connection failed: %s\n", cws::error_message(&cws, (CwsError)err));
                 }
 
                 cws::close(&cws);

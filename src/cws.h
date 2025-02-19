@@ -13,22 +13,21 @@ typedef enum {
 
 // The errors are returned as negative values from cws_* functions
 typedef enum {
-    CWS_OK                                =  0,
-    CWS_ERROR_CONNECTION_CLOSED           = -1,
-    CWS_CONTROL_FRAME_TOO_BIG             = -2,
-    CWS_RESERVED_BITS_NOT_NEGOTIATED      = -3,
-    CWS_CLOSE_FRAME_SENT                  = -4,
-    CWS_UNEXPECTED_OPCODE                 = -5,
-    CWS_SHORT_UTF8                        = -6,
-    CWS_INVALID_UTF8                      = -7,
-    CWS_SERVER_HANDSHAKE_DUPLICATE_KEY    = -8,
-    CWS_SERVER_HANDSHAKE_NO_KEY           = -9,
-    CWS_CLIENT_HANDSHAKE_BAD_ACCEPT       = -10,
-    CWS_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT = -11,
-    CWS_CLIENT_HANDSHAKE_NO_ACCEPT        = -12,
-    CWS_ERRNO                             = -13, // TODO: set CWS_ERRNO to -1, since it makes more sense for such error
-                                                 //       cause all the libc functions
-    CWS_SSL_ERROR                         = -14,
+    CWS_OK                                       =    0,
+    CWS_ERROR_ERRNO                              =   -1,
+    CWS_ERROR_CONNECTION_CLOSED                  =   -2,
+    CWS_ERROR_FRAME_CONTROL_TOO_BIG              =   -3,
+    CWS_ERROR_FRAME_RESERVED_BITS_NOT_NEGOTIATED =   -4,
+    CWS_ERROR_FRAME_CLOSE_SENT                   =   -5,
+    CWS_ERROR_FRAME_UNEXPECTED_OPCODE            =   -6,
+    CWS_ERROR_UTF8_SHORT                         =   -7,
+    CWS_ERROR_UTF8_INVALID                       =   -8,
+    CWS_ERROR_SERVER_HANDSHAKE_DUPLICATE_KEY     =   -9,
+    CWS_ERROR_SERVER_HANDSHAKE_NO_KEY            =  -10,
+    CWS_ERROR_CLIENT_HANDSHAKE_BAD_ACCEPT        =  -11,
+    CWS_ERROR_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT  =  -12,
+    CWS_ERROR_CLIENT_HANDSHAKE_NO_ACCEPT         =  -13,
+    CWS_ERROR_CUSTOM                             = -100,
 } Cws_Error;
 
 // TODO: Maybe cws should ship some stock implementations of Cws_Socket backends:
@@ -69,6 +68,7 @@ typedef struct {
 } Cws_Message;
 
 const char *cws_message_kind_name(Cws *cws, Cws_Message_Kind kind);
+const char *cws_error_message(Cws *cws, Cws_Error error);
 int cws_server_handshake(Cws *cws);
 int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);

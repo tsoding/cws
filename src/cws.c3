@@ -8,21 +8,21 @@ const CwsShutdownHow SHUTDOWN_WRITE = 1;
 const CwsShutdownHow SHUTDOWN_BOTH  = 2;
 
 distinct CwsError = int;
-const CwsError OK                                =  0;
-const CwsError ERROR_CONNECTION_CLOSED           = -1;
-const CwsError CONTROL_FRAME_TOO_BIG             = -2;
-const CwsError RESERVED_BITS_NOT_NEGOTIATED      = -3;
-const CwsError CLOSE_FRAME_SENT                  = -4;
-const CwsError UNEXPECTED_OPCODE                 = -5;
-const CwsError SHORT_UTF8                        = -6;
-const CwsError INVALID_UTF8                      = -7;
-const CwsError SERVER_HANDSHAKE_DUPLICATE_KEY    = -8;
-const CwsError SERVER_HANDSHAKE_NO_KEY           = -9;
-const CwsError CLIENT_HANDSHAKE_BAD_ACCEPT       = -10;
-const CwsError CLIENT_HANDSHAKE_DUPLICATE_ACCEPT = -11;
-const CwsError CLIENT_HANDSHAKE_NO_ACCEPT        = -12;
-const CwsError ERRNO                             = -13;
-const CwsError SSL_ERROR                         = -14;
+const CwsError OK                                       =    0;
+const CwsError ERROR_ERRNO                              =   -1;
+const CwsError ERROR_CONNECTION_CLOSED                  =   -2;
+const CwsError ERROR_FRAME_CONTROL_TOO_BIG              =   -3;
+const CwsError ERROR_FRAME_RESERVED_BITS_NOT_NEGOTIATED =   -4;
+const CwsError ERROR_FRAME_CLOSE_SENT                   =   -5;
+const CwsError ERROR_FRAME_UNEXPECTED_OPCODE            =   -6;
+const CwsError ERROR_UTF8_SHORT                         =   -7;
+const CwsError ERROR_UTF8_INVALID                       =   -8;
+const CwsError ERROR_SERVER_HANDSHAKE_DUPLICATE_KEY     =   -9;
+const CwsError ERROR_SERVER_HANDSHAKE_NO_KEY            =  -10;
+const CwsError ERROR_CLIENT_HANDSHAKE_BAD_ACCEPT        =  -11;
+const CwsError ERROR_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT  =  -12;
+const CwsError ERROR_CLIENT_HANDSHAKE_NO_ACCEPT         =  -13;
+const CwsError ERROR_CUSTOM                             = -100;
 
 def CwsSocketReadFn = fn int(void* data, void* buffer, usz len);
 def CwsSocketWriteFn = fn int(void* data, void* buffer, usz len);
@@ -62,6 +62,7 @@ extern fn int client_handshake(Cws *cws, ZString host, ZString endpoint) @extern
 extern fn int send_message(Cws *cws, CwsMessageKind kind, char *payload, usz payload_len) @extern("cws_send_message");
 extern fn int read_message(Cws *cws, CwsMessage *message) @extern("cws_read_message");
 extern fn void close(Cws *cws) @extern("cws_close");
+extern fn ZString error_message(Cws *cws, CwsError error) @extern("cws_error_message");
 
 module arena;
 
@@ -70,3 +71,4 @@ struct Arena {
 }
 
 extern fn void reset(Arena *a) @extern("arena_reset");
+extern fn void free(Arena *a) @extern("arena_free");

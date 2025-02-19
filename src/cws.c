@@ -165,7 +165,7 @@ int cws_client_handshake(Cws *cws, const char *host, const char *endpoint)
     if (ret < 0) return ret;
     ret = cws->socket.read(cws->socket.data, buffer, buffer_size - response.count);
     if (ret < 0) return ret;
-    if (!sv_eq(sec_websocket_accept, sv_from_cstr("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="))) return CWS_CLIENT_HANDSHAKE_BAD_ACCEPT;
+    if (!sv_eq(sec_websocket_accept, sv_from_cstr("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="))) return CWS_ERROR_CLIENT_HANDSHAKE_BAD_ACCEPT;
     return 0;
 }
 
@@ -187,12 +187,12 @@ static int cws__parse_sec_websocket_accept_from_response(String_View *response, 
         String_View value = sv_trim(header);
 
         if (sv_eq(key, sv_from_cstr("Sec-WebSocket-Accept"))) {
-            if (found_sec_websocket_accept) return CWS_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT;
+            if (found_sec_websocket_accept) return CWS_ERROR_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT;
             *sec_websocket_accept = value;
             found_sec_websocket_accept = true;
         }
     }
-    if (!found_sec_websocket_accept) return CWS_CLIENT_HANDSHAKE_NO_ACCEPT;
+    if (!found_sec_websocket_accept) return CWS_ERROR_CLIENT_HANDSHAKE_NO_ACCEPT;
     return 0;
 }
 
@@ -399,7 +399,7 @@ static int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
     // > All control frames MUST have a payload length of 125 bytes or less
     // > and MUST NOT be fragmented.
     if (cws__opcode_is_control(frame_header->opcode) && (frame_header->payload_len > 125 || !frame_header->fin)) {
-        return CWS_CONTROL_FRAME_TOO_BIG;
+        return CWS_ERROR_FRAME_CONTROL_TOO_BIG;
     }
 
     // RFC 6455 - Section 5.2:
@@ -411,7 +411,7 @@ static int cws__read_frame_header(Cws *cws, Cws_Frame_Header *frame_header)
     // >     value, the receiving endpoint MUST _Fail the WebSocket
     // >     Connection_.
     if (frame_header->rsv1 || frame_header->rsv2 || frame_header->rsv3) {
-        return CWS_RESERVED_BITS_NOT_NEGOTIATED;
+        return CWS_ERROR_FRAME_RESERVED_BITS_NOT_NEGOTIATED;
     }
 
     // Read the mask if masked
@@ -469,7 +469,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
             size_t payload_len;
             switch (frame.opcode) {
             case CWS_OPCODE_CLOSE:
-                return CWS_CLOSE_FRAME_SENT;
+                return CWS_ERROR_FRAME_CLOSE_SENT;
             case CWS_OPCODE_PING:
                 ret = cws__read_frame_entire_payload(cws, frame, &payload, &payload_len);
                 if (ret < 0) return ret;
@@ -482,7 +482,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
                 // Unsolicited PONGs are just ignored
                 break;
             default:
-                return CWS_UNEXPECTED_OPCODE;
+                return CWS_ERROR_FRAME_UNEXPECTED_OPCODE;
             }
         } else {
             if (!cont) {
@@ -492,12 +492,12 @@ int cws_read_message(Cws *cws, Cws_Message *message)
                     message->kind = (Cws_Message_Kind) frame.opcode;
                     break;
                 default:
-                    return CWS_UNEXPECTED_OPCODE;
+                    return CWS_ERROR_FRAME_UNEXPECTED_OPCODE;
                 }
                 cont = true;
             } else {
                 if (frame.opcode != CWS_OPCODE_CONT) {
-                    return CWS_UNEXPECTED_OPCODE;
+                    return CWS_ERROR_FRAME_UNEXPECTED_OPCODE;
                 }
             }
             size_t frame_payload_len = frame.payload_len;
@@ -516,7 +516,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
                         size_t size = payload.count - verify_pos;
                         ret = cws__utf8_to_char32_fixed(&payload.items[verify_pos], &size);
                         if (ret < 0) {
-                            if (ret != CWS_SHORT_UTF8) return ret; // Fail-fast on invalid UTF-8 that is not unfinished UTF-8
+                            if (ret != CWS_ERROR_UTF8_SHORT) return ret; // Fail-fast on invalid UTF-8 that is not unfinished UTF-8
                             if (frame.fin)             return ret; // Not tolerating unfinished UTF-8 if the message is finished
                             // Extending the finished UTF-8 to check if it fixes the problem
                             size_t saved_len = payload.count;
@@ -544,7 +544,7 @@ int cws_read_message(Cws *cws, Cws_Message *message)
 static int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size)
 {
     size_t max_size = *size;
-    if (max_size < 1) return CWS_SHORT_UTF8;
+    if (max_size < 1) return CWS_ERROR_UTF8_SHORT;
     unsigned char c = (ptr++)[0];
 
     if ((c & 0x80) == 0)
@@ -554,57 +554,57 @@ static int32_t cws__utf8_to_char32_fixed(unsigned char* ptr, size_t* size)
     }
     if ((c & 0xE0) == 0xC0)
     {
-        if (max_size < 2) return CWS_SHORT_UTF8;
+        if (max_size < 2) return CWS_ERROR_UTF8_SHORT;
         *size = 2;
         uint32_t uc = (c & 0x1F) << 6;
         c = *ptr;
         // Overlong sequence or invalid second.
-        if (!uc || (c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+        if (!uc || (c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
         uc = uc + (c & 0x3F);
         // maximum overlong sequence
-        if (uc <= 0x7F) return CWS_INVALID_UTF8;
+        if (uc <= 0x7F) return CWS_ERROR_UTF8_INVALID;
         // UTF-16 surrogate pairs
-        if (0xD800 <= uc && uc <= 0xDFFF) return CWS_INVALID_UTF8;
+        if (0xD800 <= uc && uc <= 0xDFFF) return CWS_ERROR_UTF8_INVALID;
         return uc;
     }
     if ((c & 0xF0) == 0xE0)
     {
-        if (max_size < 3) return CWS_SHORT_UTF8;
+        if (max_size < 3) return CWS_ERROR_UTF8_SHORT;
         *size = 3;
         uint32_t uc = (c & 0x0F) << 12;
         c = ptr++[0];
-        if ((c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+        if ((c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
         uc += (c & 0x3F) << 6;
         c = ptr++[0];
         // Overlong sequence or invalid last
-        if (!uc || (c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+        if (!uc || (c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
         uc = uc + (c & 0x3F);
         // maximum overlong sequence
-        if (uc <= 0x7FF) return CWS_INVALID_UTF8;
+        if (uc <= 0x7FF) return CWS_ERROR_UTF8_INVALID;
         // UTF-16 surrogate pairs
-        if (0xD800 <= uc && uc <= 0xDFFF) return CWS_INVALID_UTF8;
+        if (0xD800 <= uc && uc <= 0xDFFF) return CWS_ERROR_UTF8_INVALID;
         return uc;
     }
-    if (max_size < 4) return CWS_SHORT_UTF8;
-    if ((c & 0xF8) != 0xF0) return CWS_INVALID_UTF8;
+    if (max_size < 4) return CWS_ERROR_UTF8_SHORT;
+    if ((c & 0xF8) != 0xF0) return CWS_ERROR_UTF8_INVALID;
     *size = 4;
     uint32_t uc = (c & 0x07) << 18;
     c = ptr++[0];
-    if ((c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+    if ((c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
     uc += (c & 0x3F) << 12;
     c = ptr++[0];
-    if ((c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+    if ((c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
     uc += (c & 0x3F) << 6;
     c = ptr++[0];
     // Overlong sequence or invalid last
-    if (!uc || (c & 0xC0) != 0x80) return CWS_INVALID_UTF8;
+    if (!uc || (c & 0xC0) != 0x80) return CWS_ERROR_UTF8_INVALID;
     uc = uc + (c & 0x3F);
     // UTF-16 surrogate pairs
-    if (0xD800 <= uc && uc <= 0xDFFF) return CWS_INVALID_UTF8;
+    if (0xD800 <= uc && uc <= 0xDFFF) return CWS_ERROR_UTF8_INVALID;
     // maximum overlong sequence
-    if (uc <= 0xFFFF) return CWS_INVALID_UTF8;
+    if (uc <= 0xFFFF) return CWS_ERROR_UTF8_INVALID;
     // Maximum valid Unicode number
-    if (uc > 0x10FFFF) return CWS_INVALID_UTF8;
+    if (uc > 0x10FFFF) return CWS_ERROR_UTF8_INVALID;
     return uc;
 }
 
@@ -641,12 +641,12 @@ static int cws__parse_sec_websocket_key_from_request(String_View *request, Strin
         String_View value = sv_trim(header);
 
         if (sv_eq(key, sv_from_cstr("Sec-WebSocket-Key"))) {
-            if (found_sec_websocket_key) return CWS_SERVER_HANDSHAKE_DUPLICATE_KEY;
+            if (found_sec_websocket_key) return CWS_ERROR_SERVER_HANDSHAKE_DUPLICATE_KEY;
             *sec_websocket_key = value;
             found_sec_websocket_key = true;
         }
     }
-    if (!found_sec_websocket_key) return CWS_SERVER_HANDSHAKE_NO_KEY;
+    if (!found_sec_websocket_key) return CWS_ERROR_SERVER_HANDSHAKE_NO_KEY;
     return 0;
 }
 
@@ -663,6 +663,33 @@ static const char *cws__compute_sec_websocket_accept(Cws *cws, String_View sec_w
     b64_encode((void*)digest, sizeof(digest), sec_websocket_accept, sec_websocket_accept_len, B64_STD_ALPHA, B64_DEFAULT_PAD);
     sec_websocket_accept[sec_websocket_accept_len-1] = '\0';
     return sec_websocket_accept;
+}
+
+const char *cws_error_message(Cws *cws, Cws_Error error)
+{
+    switch (error) {
+        case CWS_OK:                                       return "OK";
+        case CWS_ERROR_ERRNO:                              return strerror(errno);
+        case CWS_ERROR_CONNECTION_CLOSED:                  return "Connection closed";
+        case CWS_ERROR_FRAME_CONTROL_TOO_BIG:              return "Control frame too big";
+        case CWS_ERROR_FRAME_RESERVED_BITS_NOT_NEGOTIATED: return "Unnegotiated reserved frame bits";
+        case CWS_ERROR_FRAME_CLOSE_SENT:                   return "Close frame was sent";
+        case CWS_ERROR_FRAME_UNEXPECTED_OPCODE:            return "Unexpected opcode frame";
+        case CWS_ERROR_UTF8_SHORT:                         return "UTF-8 sequence is too short";
+        case CWS_ERROR_UTF8_INVALID:                       return "UTF-8 sequence is invalid";
+        case CWS_ERROR_SERVER_HANDSHAKE_DUPLICATE_KEY:     return "Server Handshake: duplicate Sec-WebSocket-Key";
+        case CWS_ERROR_SERVER_HANDSHAKE_NO_KEY:            return "Server Handshake: Sec-WebSocket-Key is missing";
+        case CWS_ERROR_CLIENT_HANDSHAKE_BAD_ACCEPT:        return "Client Handshake: bad Sec-WebSocket-Accept";
+        case CWS_ERROR_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT:  return "Client Handshake: duplicate Sec-WebSocket-Accept";
+        case CWS_ERROR_CLIENT_HANDSHAKE_NO_ACCEPT:         return "Client Handshake: no Sec-WebSocket-Accept";
+        default: if (error <= CWS_ERROR_CUSTOM) {
+            return arena_sprintf(&cws->arena, "Custom error (%d)", error);
+        } else if (CWS_ERROR_CUSTOM < error && error < CWS_OK) {
+            return arena_sprintf(&cws->arena, "Unknown error (%d)", error);
+        } else {
+            return arena_sprintf(&cws->arena, "Not an error (%d)", error);
+        }
+    }
 }
 
 #define ARENA_IMPLEMENTATION

@@ -15,7 +15,7 @@
 int cws_socket_read(void *data, void *buffer, size_t len)
 {
     int n = read((long int)data, buffer, len);
-    if (n < 0) return CWS_ERRNO;
+    if (n < 0) return CWS_ERROR_ERRNO;
     if (n == 0) return CWS_ERROR_CONNECTION_CLOSED;
     return n;
 }
@@ -25,7 +25,7 @@ int cws_socket_read(void *data, void *buffer, size_t len)
 int cws_socket_peek(void *data, void *buffer, size_t len)
 {
     int n = recv((long int)data, buffer, len, MSG_PEEK);
-    if (n < 0)  return CWS_ERRNO;
+    if (n < 0)  return CWS_ERROR_ERRNO;
     if (n == 0) return CWS_ERROR_CONNECTION_CLOSED;
     return n;
 }
@@ -33,20 +33,20 @@ int cws_socket_peek(void *data, void *buffer, size_t len)
 int cws_socket_write(void *data, const void *buffer, size_t len)
 {
     int n = write((long int)data, buffer, len);
-    if (n < 0)  return CWS_ERRNO;
+    if (n < 0)  return CWS_ERROR_ERRNO;
     if (n == 0) return CWS_ERROR_CONNECTION_CLOSED;
     return n;
 }
 
 int cws_socket_shutdown(void *data, Cws_Shutdown_How how)
 {
-    if (shutdown((long int)data, how) < 0) return CWS_ERRNO;
+    if (shutdown((long int)data, how) < 0) return CWS_ERROR_ERRNO;
     return 0;
 }
 
 int cws_socket_close(void *data)
 {
-    if (close((long int)data) < 0) return CWS_ERRNO;
+    if (close((long int)data) < 0) return CWS_ERROR_ERRNO;
     return 0;
 }
 
@@ -108,7 +108,7 @@ int main(void)
 
         int err = cws_server_handshake(&cws);
         if (err < 0) {
-            fprintf(stderr, "%s:%d: CWS ERROR: %d\n", __FILE__, __LINE__, err);
+            fprintf(stderr, "ERROR: %s\n", cws_error_message(&cws, err));
             return 1;
         }
 
@@ -117,10 +117,10 @@ int main(void)
             Cws_Message message = {0};
             err = cws_read_message(&cws, &message);
             if (err < 0) {
-                if (err == CWS_CLOSE_FRAME_SENT) {
+                if (err == CWS_ERROR_FRAME_CLOSE_SENT) {
                     printf("INFO: client closed connection\n");
                 } else {
-                    printf("ERROR: client connection failed: %d\n", err);
+                    printf("ERROR: client connection failed: %s\n", cws_error_message(&cws, err));
                 }
 
                 cws_close(&cws);
@@ -130,6 +130,8 @@ int main(void)
             cws_send_message(&cws, message.kind, message.payload, message.payload_len);
             arena_reset(&cws.arena);
         }
+
+        arena_free(&cws.arena);
     }
 
     return 0;
