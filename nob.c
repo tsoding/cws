@@ -33,14 +33,29 @@ int main(int argc, char **argv)
 
     if (!nob_procs_wait_and_reset(&procs)) return 1;
 
+    cmd_append(&cmd, "ar", "-rcs", BUILD_FOLDER"libcws.a", BUILD_FOLDER"coroutine.o", BUILD_FOLDER"cws.o");
+    da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
+
+    if (!nob_procs_wait_and_reset(&procs)) return 1;
+
     cc_with_cflags(&cmd);
     cc_output(&cmd, BUILD_FOLDER"01_plain_echo_server");
-    cc_input(&cmd, EXAMPLES_FOLDER"01_plain_echo_server.c", BUILD_FOLDER"cws.o");
+    cc_input(&cmd, EXAMPLES_FOLDER"01_plain_echo_server.c", BUILD_FOLDER"libcws.a");
     da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
 
     cc_with_cflags(&cmd);
     cc_output(&cmd, BUILD_FOLDER"02_plain_async_echo_server");
-    cc_input(&cmd, EXAMPLES_FOLDER"02_plain_async_echo_server.c", BUILD_FOLDER"cws.o", BUILD_FOLDER"coroutine.o");
+    cc_input(&cmd, EXAMPLES_FOLDER"02_plain_async_echo_server.c", BUILD_FOLDER"libcws.a");
+    da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
+
+    cmd_append(&cmd,
+        "c3c", "compile",
+        "-g",
+        "-l", BUILD_FOLDER"libcws.a",
+        "-o", BUILD_FOLDER"11_plain_echo_server",
+        EXAMPLES_FOLDER"11_plain_echo_server.c3",
+        SRC_FOLDER"cws.c3",
+        SRC_FOLDER"coroutine.c3");
     da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
 
     if (!nob_procs_wait_and_reset(&procs)) return 1;

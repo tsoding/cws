@@ -26,9 +26,17 @@ typedef enum {
     CWS_CLIENT_HANDSHAKE_BAD_ACCEPT       = -10,
     CWS_CLIENT_HANDSHAKE_DUPLICATE_ACCEPT = -11,
     CWS_CLIENT_HANDSHAKE_NO_ACCEPT        = -12,
-    CWS_ERRNO                             = -13, // TODO: set CWS_ERRNO to -1
+    CWS_ERRNO                             = -13, // TODO: set CWS_ERRNO to -1, since it makes more sense for such error
+                                                 //       cause all the libc functions
     CWS_SSL_ERROR                         = -14,
 } Cws_Error;
+
+// TODO: Maybe cws should ship some stock implementations of Cws_Socket backends:
+// - Plain sync
+// - Plain async on coroutines
+// - TLS sync
+// - TLS async on coroutines (if coroutines even work with OpenSSL)
+// Some of them are already implemented in examples
 
 // NOTE: read, write, and peek must never return 0. On internally returning 0 they must return CWS_ERROR_CONNECTION_CLOSED
 typedef struct {
@@ -44,8 +52,8 @@ typedef struct {
 
 typedef struct {
     Cws_Socket socket;
-    Arena arena;
-    bool debug; // Enable debug logging
+    Arena arena;   // All the dynamic memory allocations done by cws go into this arena
+    bool debug;    // Enable debug logging
     bool client;
 } Cws;
 
