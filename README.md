@@ -11,6 +11,13 @@ Custom WebSocket implementation in C for educational and recreational purposes.
 $ cc -o nob nob.c
 $ ./nob
 $ ./build/02_plain_async_echo_server
+$ firefox ./tools/send_client.html
+```
+
+The Echo Servers in the examples are also testable with [Autobahn Test Suite](https://github.com/crossbario/autobahn-testsuite).
+
+```
+$ ./build/02_plain_async_echo_server
 $ wstest --mode fuzzingclient
 ```
 
