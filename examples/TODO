@@ -1,3 +1,5 @@
 - Blocking SSL echo server example
 - Coroutines Async SSL Echo Server example
 - Client examples
+- Use send/recv in all the examples with send using MSG_NOSIGNAL flag that suppresses SIGPIPE
+- Apply SO_LINGER to the client sockets

@@ -62,6 +62,9 @@ static bool cws__opcode_is_control(Cws_Opcode opcode);
 void cws_close(Cws *cws)
 {
     // Ignoring any errors of socket operations because we are closing the connection anyway
+
+    // TODO: The sender may give a reason of the close via the status code
+    // See RFC6466, Section 7.4
     cws__send_frame(cws, true, CWS_OPCODE_CLOSE, NULL, 0);
 
     // Base on the ideas from https://blog.netherlabs.nl/articles/2009/01/18/the-ultimate-so_linger-page-or-why-is-my-tcp-not-reliable

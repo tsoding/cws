@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include "arena.h"
 
+// TODO: run autobahn testsuit on CI and deploy reports to github pages
+
 typedef enum {
     CWS_SHUTDOWN_READ,
     CWS_SHUTDOWN_WRITE,
@@ -69,6 +71,7 @@ typedef struct {
 
 const char *cws_message_kind_name(Cws *cws, Cws_Message_Kind kind);
 const char *cws_error_message(Cws *cws, Cws_Error error);
+// TODO: cws_server_handshake should allow you to inspect endpoints requested by clients and reject them
 int cws_server_handshake(Cws *cws);
 int cws_client_handshake(Cws *cws, const char *host, const char *endpoint);
 int cws_send_message(Cws *cws, Cws_Message_Kind kind, unsigned char *payload, size_t payload_len);
