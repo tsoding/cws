@@ -48,6 +48,7 @@ int main(int argc, char **argv)
     cc_input(&cmd, EXAMPLES_FOLDER"02_plain_async_echo_server.c", BUILD_FOLDER"libcws.a");
     da_append(&procs, nob_cmd_run_async_and_reset(&cmd));
 
+    // TODO: detect the presense of c3c and if it's missing don't try to build the C3 example
     cmd_append(&cmd,
         "c3c", "compile",
         "-g",
