@@ -1,6 +1,6 @@
 #define NOB_IMPLEMENTATION
 #define NOB_STRIP_PREFIX
-#include "nob.h"
+#include "src/nob.h"
 
 #define BUILD_FOLDER "build/"
 #define EXAMPLES_FOLDER "examples/"
@@ -13,7 +13,7 @@
 
 int main(int argc, char **argv)
 {
-    NOB_GO_REBUILD_URSELF_PLUS(argc, argv, "nob.h");
+    NOB_GO_REBUILD_URSELF_PLUS(argc, argv, "src/nob.h");
     Cmd cmd = {0};
     Nob_Procs procs = {0};
 
