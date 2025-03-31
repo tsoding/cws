@@ -6,7 +6,7 @@
 #define EXAMPLES_FOLDER "examples/"
 #define SRC_FOLDER "src/"
 
-#define cc_with_cflags(cmd) cmd_append(cmd, "gcc", "-Wall", "-Wextra", "-ggdb", "-I.", "-I"SRC_FOLDER)
+#define cc_with_cflags(cmd) cmd_append(cmd, "clang", "-Wall", "-Wextra", "-ggdb", "-I.", "-I"SRC_FOLDER)
 #define cc_output(cmd, output_path) cmd_append(cmd, "-o", output_path)
 #define cc_no_link(cmd) cmd_append(cmd, "-c")
 #define cc_input(cmd, ...) cmd_append(cmd, __VA_ARGS__)
